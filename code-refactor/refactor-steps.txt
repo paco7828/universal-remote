@@ -1,0 +1,9 @@
+1. Check for unused variables and functions and definitions
+2. Use #define instead of const int
+2. Class: UniversalRemote
+3. Class properties, functions:
+    UniversalRemote:
+        -functions:
+            -all menu options
+4. Keyboard renew
+

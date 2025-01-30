@@ -1,0 +1,41 @@
+#include <IRremote.hpp>
+#define MARK_EXCESS_MICROS 20
+#define IR_RECEIVE_PIN 2
+
+uint16_t currentRawData[67];
+uint8_t currentRawDataLen;
+
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  Serial.begin(115200);
+  while (!Serial)
+    ;
+
+  IrReceiver.begin(IR_RECEIVE_PIN);
+}
+
+void loop() {
+  if (IrReceiver.decode()) {
+    captureRawData();
+    delay(1000);
+    IrReceiver.resume();
+  }
+}
+
+void captureRawData() {
+  currentRawDataLen = IrReceiver.decodedIRData.rawlen - 1;
+
+  // Store the data
+  for (IRRawlenType i = 1; i < IrReceiver.decodedIRData.rawlen; i++) {
+    uint32_t tDuration = IrReceiver.decodedIRData.rawDataPtr->rawbuf[i] * MICROS_PER_TICK;
+
+    if (i & 1) {
+      tDuration -= MARK_EXCESS_MICROS;
+    } else {
+      tDuration += MARK_EXCESS_MICROS;
+    }
+
+    currentRawData[i - 1] = tDuration;
+  }
+}

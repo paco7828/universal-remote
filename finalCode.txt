@@ -1,9 +1,6 @@
 // Importing necessary libraries
 #include <IRremote.hpp>
-#include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
-#include <Adafruit_ST7789.h>
-#include <SPI.h>
 #include <EEPROM.h>
 
 // Define pins for TFT screen
@@ -14,10 +11,8 @@
 // Define screen
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
-// Define IR signal receiver pin
+// Define IR signal receiver and transmitter
 const int IR_RECV_PIN = 2;
-
-// Define IR transmitter pin
 const int IR_SEND_PIN = 3;
 
 // Define buttons
@@ -53,7 +48,6 @@ int prevCursorCol = -1;
 
 // Variables for the "Saved signals" screen, used to highlight the saved options
 int highlightedIndex = 0;
-int redrawList = true;
 
 // Extra boolean variables (flags) to help the program catch button presses
 bool menuShown;
@@ -90,7 +84,6 @@ struct IRSignal {
 void setup() {
   // Initialize IR transmitter
   IrSender.begin(IR_SEND_PIN);
-  Serial.begin(9600);
 
   // Initialize IR receiver
   IrReceiver.begin(IR_RECV_PIN, ENABLE_LED_FEEDBACK);
@@ -557,13 +550,6 @@ void highlightOption(String option) {
   }
 }
 
-// Function to read IR signal data from EEPROM
-IRSignal readFromEEPROM(int eepromAddress) {
-  IRSignal signal;
-  EEPROM.get(eepromAddress, signal);
-  return signal;
-}
-
 void handleBackBtn() {
   bool backBtnCurrentState = debounceBtn(backBtn, backBtnState);
   if (backBtnCurrentState == HIGH && backBtnState == LOW) {
@@ -1010,25 +996,6 @@ void deleteMemory() {
   tft.setCursor(20, 80);
   tft.print("deleted!");
   delay(2000);
-  menuSetup();
-}
-
-void saveInput(String text) {
-  // Save the input text to EEPROM or perform any other required action
-  int address = getNextAvailableEEPROMAddress();
-  for (int i = 0; i < text.length(); i++) {
-    EEPROM.write(address + i, text[i]);
-  }
-  EEPROM.write(address + text.length(), '\0');
-
-  // Show "Saved" message
-  tft.fillScreen(ST7735_BLACK);
-  tft.setTextSize(2);
-  tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(25, 60);
-  tft.print("Saved!");
-  delay(2000);
-
   menuSetup();
 }
 
