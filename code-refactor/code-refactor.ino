@@ -19,11 +19,11 @@
 
 UniversalRemote uniRemote(TFT_CS, TFT_RST, TFT_DC, IR_RX_PIN, IR_TX_PIN, UP_BTN, DOWN_BTN, LEFT_BTN, RIGHT_BTN, BACK_BTN, CONFIRM_BTN);
 
-void setup()
-{
-    uniRemote.initRemote();
+void setup() {
+  uniRemote.initRemote();
 }
 
-void loop()
-{
+void loop() {
+  uniRemote.handleLeftBtn(UniversalRemote::checkMemoryCallback);
+  uniRemote.handleBackBtn(UniversalRemote::menuSetupCallback);
 }

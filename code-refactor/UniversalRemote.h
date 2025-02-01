@@ -54,10 +54,10 @@ private:
   }
 
   // ********************************* Generalized button handler *********************************
-  void handleBtn(int btn, bool &btnState, void callback()) {
+  void handleBtn(int btn, bool &btnState, void (*callback)(UniversalRemote *)) {
     bool currentBtnState = debounceBtn(btn, btnState);
     if (currentBtnState == HIGH && btnState == LOW) {
-      callback();
+      callback(this);  // Pass 'this' to callback
       btnState = HIGH;
     } else if (currentBtnState == LOW && btnState == HIGH) {
       btnState = LOW;
@@ -77,7 +77,7 @@ public:
   Adafruit_ST7735 tft;
 
   // ********************************* Constructor *********************************
-  UniversalRemote(int tft_cs, int tft_rst, int tft_dc, int ir_rx, int ir_tx, int up_btn, int down_btn, int right_btn, int left_btn, int back_btn, int confirm_btn)
+  UniversalRemote(int tft_cs, int tft_rst, int tft_dc, int ir_rx, int ir_tx, int up_btn, int down_btn, int left_btn, int right_btn, int back_btn, int confirm_btn)
     : tft(tft_cs, tft_dc, tft_rst) {
     this->tft_cs = tft_cs;
     this->tft_rst = tft_rst;
@@ -108,23 +108,23 @@ public:
 
   // ********************************* Button handling functions *********************************
 
-  void handleUpBtn(void (*callback)()) {
+  void handleUpBtn(void (*callback)(UniversalRemote *)) {
     handleBtn(up_btn, upBtnState, callback);
   }
 
-  void handleDownBtn(void (*callback)()) {
+  void handleDownBtn(void (*callback)(UniversalRemote *)) {
     handleBtn(down_btn, downBtnState, callback);
   }
 
-  void handleLeftBtn(void (*callback)()) {
+  void handleLeftBtn(void (*callback)(UniversalRemote *)) {
     handleBtn(left_btn, leftBtnState, callback);
   }
 
-  void handleRightBtn(void (*callback)()) {
+  void handleRightBtn(void (*callback)(UniversalRemote *)) {
     handleBtn(right_btn, rightBtnState, callback);
   }
 
-  void handleBackBtn(void (*callback)()) {
+  void handleBackBtn(void (*callback)(UniversalRemote *)) {
     handleBtn(back_btn, backBtnState, callback);
   }
 
@@ -204,9 +204,8 @@ public:
     this->tft.fillRect(rectX, rectY, 30, 20, ST7735_RED);
     this->tft.setCursor(textX, textY);
     this->tft.print("BACK");
-    //handleBackBtn(menuSetup); FIX CALLBACK ERROR
+    handleBackBtn(menuSetupCallback);
   }
-
 
   void createSendBtn(bool highlight) {
     this->tft.setTextColor(ST7735_WHITE);
@@ -272,9 +271,9 @@ public:
     }
 
     int remainingMemory = EEPROM.length() - usedMemory;
-    printText(1, ST7735_WHITE, 30, 50, "Total memory: " + String(EEPROM.length()) + " b");
-    printText(3, ST7735_WHITE, 70, 50, "Used memory: " + String(usedMemory) + " b");
-    printText(3, ST7735_WHITE, 90, 70, "Free memory: " + String(remainingMemory) + " b");
+    printText(1, ST7735_WHITE, 3, 50, "Total memory: " + String(EEPROM.length()) + " b");
+    printText(1, ST7735_WHITE, 3, 70, "Used memory: " + String(usedMemory) + " b");
+    printText(1, ST7735_WHITE, 3, 90, "Free memory: " + String(remainingMemory) + " b");
     createBackBtn(94, 137, 98, 143);
   }
 
@@ -296,5 +295,13 @@ public:
     this->tft.fillRect(65, 94, 63, 30, ST7735_RED);
     printText(1, ST7735_WHITE, 80, 100, "Delete");
     printText(1, ST7735_WHITE, 80, 110, "memory");
+  }
+
+  static void menuSetupCallback(UniversalRemote *remote) {
+    remote->menuSetup();
+  }
+
+  static void checkMemoryCallback(UniversalRemote *remote) {
+    remote->checkMemory();
   }
 };
