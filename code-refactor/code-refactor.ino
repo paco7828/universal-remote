@@ -26,4 +26,5 @@ void setup() {
 void loop() {
   uniRemote.handleLeftBtn(UniversalRemote::checkMemoryCallback);
   uniRemote.handleBackBtn(UniversalRemote::menuSetupCallback);
+  uniRemote.handleRightBtn(UniversalRemote::memoryFormatCallback);
 }

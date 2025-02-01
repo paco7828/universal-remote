@@ -74,6 +74,8 @@ public:
   bool signalCaptured;
   int mark_excess_micros = 20;
   bool menuShown;
+  bool onDelScreen;
+  String selectedChoice = "No";
   Adafruit_ST7735 tft;
 
   // ********************************* Constructor *********************************
@@ -128,7 +130,7 @@ public:
     handleBtn(back_btn, backBtnState, callback);
   }
 
-  void handleConfirmBtn(void (*callback)()) {
+  void handleConfirmBtn(void (*callback)(UniversalRemote *)) {
     handleBtn(confirm_btn, confirmBtnState, callback);
   }
 
@@ -297,11 +299,84 @@ public:
     printText(1, ST7735_WHITE, 80, 110, "memory");
   }
 
+  void memoryFormat() {
+    menuShown = false;
+    onDelScreen = true;
+    drawDelScreenComps(selectedChoice);
+    while (onDelScreen) {
+      // Down button press
+      handleDownBtn([](UniversalRemote *remote) {
+        if (remote->selectedChoice == "No") {
+          remote->selectedChoice = "Yes";
+          remote->drawDelScreenComps(remote->selectedChoice);
+        }
+      });
+      // Up button press
+      handleUpBtn([](UniversalRemote *remote) {
+        if (remote->selectedChoice == "Yes") {
+          remote->selectedChoice = "No";
+          remote->drawDelScreenComps(remote->selectedChoice);
+        }
+      });
+      // Confirm button press
+      handleConfirmBtn([](UniversalRemote *remote) {
+        if (remote->selectedChoice == "Yes") {
+          remote->deleteMemory();
+        } else if (remote->selectedChoice == "No") {
+          remote->menuSetup();
+        }
+        remote->onDelScreen = false;
+      });
+    }
+  }
+
+  void drawDelScreenComps(String option) {
+    refreshScreen();
+    printText(2, ST7735_WHITE, 15, 15, "Confirm");
+    printText(2, ST7735_WHITE, 10, 35, "deletion?");
+    tft.drawRect(42, 65, 40, 25, ST7735_WHITE);   // "No" option
+    tft.drawRect(40, 105, 45, 25, ST7735_WHITE);  // "Yes" option
+    highlightOption(option);
+    printText(2, ST7735_WHITE, 50, 70, "No");
+    printText(2, ST7735_WHITE, 45, 110, "Yes");
+  }
+
+  void deleteMemory() {
+    refreshScreen();
+    printText(2, ST7735_WHITE, 5, 60, "Deleting..");
+    for (int i = 0; i < EEPROM.length(); i++) {
+      EEPROM.write(i, 0xFF);
+    }
+    refreshScreen();
+    printText(2, ST7735_WHITE, 30, 60, "Memory");
+    printText(2, ST7735_WHITE, 20, 80, "deleted!");
+    delay(2000);
+    menuSetup();
+  }
+
+  // ********************************* CALLBACK functions *********************************
+
   static void menuSetupCallback(UniversalRemote *remote) {
     remote->menuSetup();
   }
 
   static void checkMemoryCallback(UniversalRemote *remote) {
     remote->checkMemory();
+  }
+
+  static void memoryFormatCallback(UniversalRemote *remote) {
+    remote->memoryFormat();
+  }
+
+  static void drawDelScreenCompsCallback(UniversalRemote *remote) {
+    remote->drawDelScreenComps(remote->selectedChoice);
+  }
+
+  static void deleteMemoryCallback(UniversalRemote *remote) {
+    if (remote->selectedChoice == "Yes") {
+      remote->deleteMemory();
+    } else if (remote->selectedChoice == "No") {
+      remote->menuSetup();
+    }
   }
 };
