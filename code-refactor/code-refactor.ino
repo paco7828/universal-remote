@@ -24,7 +24,16 @@ void setup() {
 }
 
 void loop() {
-  uniRemote.handleLeftBtn(UniversalRemote::checkMemoryCallback);
-  uniRemote.handleBackBtn(UniversalRemote::menuSetupCallback);
-  uniRemote.handleRightBtn(UniversalRemote::memoryFormatCallback);
+  if (uniRemote.menuShown) {
+    uniRemote.handleLeftBtn(UniversalRemote::checkMemoryCallback);
+    uniRemote.handleRightBtn(UniversalRemote::memoryFormatCallback);
+    uniRemote.handleUpBtn(UniversalRemote::waitForSignalCallback);
+  } else if (uniRemote.onDelScreen) {
+    uniRemote.handleDownBtn(UniversalRemote::delScreenDownCallback);
+    uniRemote.handleUpBtn(UniversalRemote::delScreenUpCallback);
+    uniRemote.handleConfirmBtn(UniversalRemote::deleteMemoryCallback);
+    uniRemote.handleHomeBtn(UniversalRemote::menuSetupCallback);
+  } else {
+    uniRemote.handleHomeBtn(UniversalRemote::menuSetupCallback);
+  }
 }

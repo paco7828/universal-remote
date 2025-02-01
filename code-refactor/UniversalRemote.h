@@ -17,6 +17,7 @@ private:
   int confirm_btn;
   uint16_t currentRawData[68];
   uint8_t currentRawDataLen;
+  static const char *const alphabet[29];
 
   struct IRSignal {
     char name[10];
@@ -36,17 +37,13 @@ private:
   }
 
   void resetVariables() {
-    // listeningForSignal = false;
-    // actualListen = false;
-    // signalReceived = false;
-    // ableToSave = false;
-    // ableToWrite = false;
-    // onDelScreen = false;
-    // ableToScroll = false;
-    // isInspecting = false;
-    // cursorRow = 0;
-    // cursorCol = 0;
-    // outputText = "";
+    menuShown = false;
+    onListenSignal = false;
+    onDelScreen = false;
+    signalCaptured = false;
+    cursorRow = 0;
+    cursorCol = 0;
+    selectedChoice = "No";
   }
 
   void drawMenuOption(int posx, int posy, int width, int height) {
@@ -70,13 +67,17 @@ public:
   bool leftBtnState;
   bool rightBtnState;
   bool confirmBtnState;
-  bool backBtnState;
-  bool signalCaptured;
+  bool HomeBtnState;
+  bool signalCaptured = false;
   int mark_excess_micros = 20;
   bool menuShown;
   bool onDelScreen;
   String selectedChoice = "No";
   Adafruit_ST7735 tft;
+  int cursorRow = 0;
+  int cursorCol = 0;
+  bool onListenSignal = false;
+  bool printedListening = false;
 
   // ********************************* Constructor *********************************
   UniversalRemote(int tft_cs, int tft_rst, int tft_dc, int ir_rx, int ir_tx, int up_btn, int down_btn, int left_btn, int right_btn, int back_btn, int confirm_btn)
@@ -126,8 +127,8 @@ public:
     handleBtn(right_btn, rightBtnState, callback);
   }
 
-  void handleBackBtn(void (*callback)(UniversalRemote *)) {
-    handleBtn(back_btn, backBtnState, callback);
+  void handleHomeBtn(void (*callback)(UniversalRemote *)) {
+    handleBtn(back_btn, HomeBtnState, callback);
   }
 
   void handleConfirmBtn(void (*callback)(UniversalRemote *)) {
@@ -135,15 +136,31 @@ public:
   }
 
   // ********************************* Signal functions *********************************
-  void listenForSignal() {
+  void waitForSignal() {
+    refreshScreen();
+    if (!printedListening) {
+      printText(1, ST7735_WHITE, 30, 85, "Listening...");
+      printedListening = true;
+    }
     if (!signalCaptured) {
       if (IrReceiver.decode()) {
         // Capture signal
         captureSignal();
-
+        refreshScreen();
+        printText(1, ST7735_WHITE, 30, 85, "Captured!");
+        delay(2000);
+        createHomeBtn();
         // Create signal structure
         IRSignal signal;
-
+        drawKeyboard();
+        /*
+        1. Create keyboard
+        2. Add typing functionality
+        3. Wait for ok btn to be pressed
+        4. Save signal with custom name
+        5. return to main screen
+        */
+        /*
         // Fill signal with captured data
         strcpy(signal.name, "Signal1");  // FIX --> custom name with keyboard
         memcpy(signal.rawData, currentRawData, currentRawDataLen * sizeof(uint16_t));
@@ -151,6 +168,7 @@ public:
 
         // Save the captured signal
         this->saveSignal(signal);
+        */
 
         signalCaptured = true;
       }
@@ -158,14 +176,18 @@ public:
   }
 
   void captureSignal() {
+    currentRawDataLen = IrReceiver.decodedIRData.rawlen - 1;
+
+    // Store the raw timing data
     for (uint8_t i = 1; i < IrReceiver.decodedIRData.rawlen; i++) {
       uint32_t duration = IrReceiver.decodedIRData.rawDataPtr->rawbuf[i] * MICROS_PER_TICK;
 
-      if (i % 2 == 1) {  // Mark
+      if (i & 1) {  // Mark
         duration -= mark_excess_micros;
       } else {  // Space
         duration += mark_excess_micros;
       }
+
       currentRawData[i - 1] = (uint16_t)duration;
     }
   }
@@ -200,13 +222,13 @@ public:
     this->tft.print(text);
   }
 
-  void createBackBtn(int rectX, int rectY, int textX, int textY) {
+  void createHomeBtn() {
     this->tft.setTextSize(1);
     this->tft.setTextColor(ST7735_WHITE);
-    this->tft.fillRect(rectX, rectY, 30, 20, ST7735_RED);
-    this->tft.setCursor(textX, textY);
-    this->tft.print("BACK");
-    handleBackBtn(menuSetupCallback);
+    this->tft.fillRect(94, 137, 30, 20, ST7735_RED);
+    this->tft.setCursor(98, 143);
+    this->tft.print("HOME");
+    handleHomeBtn(menuSetupCallback);
   }
 
   void createSendBtn(bool highlight) {
@@ -254,6 +276,26 @@ public:
   }
 
   // ********************************* MENU OPTION functions *********************************
+  void menuSetup() {
+    resetVariables();
+    menuShown = true;
+    refreshScreen();
+    printText(2, ST7735_WHITE, 15, 10, "Universal");
+    printText(2, ST7735_WHITE, 30, 30, "Remote");
+    drawMenuOption(30, 60, 75, 30);
+    printText(1, ST7735_WHITE, 37, 65, "Listen for");
+    printText(1, ST7735_WHITE, 48, 75, "signal");
+    drawMenuOption(30, 128, 75, 30);
+    printText(1, ST7735_WHITE, 53, 133, "Saved");
+    printText(1, ST7735_WHITE, 48, 144, "signals");
+    drawMenuOption(0, 94, 63, 30);
+    printText(1, ST7735_WHITE, 15, 100, "Check");
+    printText(1, ST7735_WHITE, 12, 110, "memory");
+    this->tft.fillRect(65, 94, 63, 30, ST7735_RED);
+    printText(1, ST7735_WHITE, 80, 100, "Delete");
+    printText(1, ST7735_WHITE, 80, 110, "memory");
+  }
+
   void checkMemory() {
     menuShown = false;
     refreshScreen();
@@ -276,58 +318,14 @@ public:
     printText(1, ST7735_WHITE, 3, 50, "Total memory: " + String(EEPROM.length()) + " b");
     printText(1, ST7735_WHITE, 3, 70, "Used memory: " + String(usedMemory) + " b");
     printText(1, ST7735_WHITE, 3, 90, "Free memory: " + String(remainingMemory) + " b");
-    createBackBtn(94, 137, 98, 143);
-  }
-
-  void menuSetup() {
-    resetVariables();
-    menuShown = true;
-    refreshScreen();
-    printText(2, ST7735_WHITE, 15, 10, "Universal");
-    printText(2, ST7735_WHITE, 30, 30, "Remote");
-    drawMenuOption(30, 60, 75, 30);
-    printText(1, ST7735_WHITE, 37, 65, "Listen for");
-    printText(1, ST7735_WHITE, 48, 75, "signal");
-    drawMenuOption(30, 128, 75, 30);
-    printText(1, ST7735_WHITE, 53, 133, "Saved");
-    printText(1, ST7735_WHITE, 48, 144, "signals");
-    drawMenuOption(0, 94, 63, 30);
-    printText(1, ST7735_WHITE, 15, 100, "Check");
-    printText(1, ST7735_WHITE, 12, 110, "memory");
-    this->tft.fillRect(65, 94, 63, 30, ST7735_RED);
-    printText(1, ST7735_WHITE, 80, 100, "Delete");
-    printText(1, ST7735_WHITE, 80, 110, "memory");
+    createHomeBtn();
   }
 
   void memoryFormat() {
-    menuShown = false;
+    resetVariables();
     onDelScreen = true;
+    selectedChoice = "No";
     drawDelScreenComps(selectedChoice);
-    while (onDelScreen) {
-      // Down button press
-      handleDownBtn([](UniversalRemote *remote) {
-        if (remote->selectedChoice == "No") {
-          remote->selectedChoice = "Yes";
-          remote->drawDelScreenComps(remote->selectedChoice);
-        }
-      });
-      // Up button press
-      handleUpBtn([](UniversalRemote *remote) {
-        if (remote->selectedChoice == "Yes") {
-          remote->selectedChoice = "No";
-          remote->drawDelScreenComps(remote->selectedChoice);
-        }
-      });
-      // Confirm button press
-      handleConfirmBtn([](UniversalRemote *remote) {
-        if (remote->selectedChoice == "Yes") {
-          remote->deleteMemory();
-        } else if (remote->selectedChoice == "No") {
-          remote->menuSetup();
-        }
-        remote->onDelScreen = false;
-      });
-    }
   }
 
   void drawDelScreenComps(String option) {
@@ -339,6 +337,7 @@ public:
     highlightOption(option);
     printText(2, ST7735_WHITE, 50, 70, "No");
     printText(2, ST7735_WHITE, 45, 110, "Yes");
+    createHomeBtn();
   }
 
   void deleteMemory() {
@@ -353,6 +352,90 @@ public:
     delay(2000);
     menuSetup();
   }
+
+  // ********************************* KEYBOARD functions *********************************
+  void drawKeyboard() {
+    refreshScreen();
+
+    const int cellWidth = 15;
+    const int cellHeight = 24;
+    const int spaceWidth = 2 * cellWidth;
+    const int startX = 5;
+    const int startY = 40;
+
+    int row, col;
+    for (int i = 0; i < 29; i++) {
+      String currentChar = alphabet[i];
+      int currentCellWidth = cellWidth;
+      int xOffset, yOffset;
+
+      if (currentChar == "N") {
+        row = 3;
+        col = 1;
+      } else if (currentChar == "SPACE") {
+        row = 3;
+        col = 2;
+        currentCellWidth = spaceWidth;
+      } else if (currentChar == "<") {
+        row = 3;
+        col = 4;
+      } else if (currentChar == "M") {
+        row = 3;
+        col = 5;
+      } else if (currentChar == ">") {
+        row = 3;
+        col = 6;
+      } else if (currentChar == "B") {
+        row = 2;
+        col = 7;
+      } else {
+        row = i / 8;
+        col = i % 8;
+        if (row == 3) {
+          if (col >= 1 && col <= 2) col += 1;
+          else if (col >= 4) col += 2;
+        }
+      }
+
+      xOffset = startX + col * cellWidth;
+      yOffset = startY + row * cellHeight;
+
+      if (row == cursorRow && (col == cursorCol || (currentChar == "SPACE" && (cursorCol == 2 || cursorCol == 3)))) {
+        if (currentChar == ">") {
+          tft.fillRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_GREEN);
+          tft.setTextColor(ST7735_BLACK);
+        } else if (currentChar == "<") {
+          tft.fillRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_RED);
+          tft.setTextColor(ST7735_WHITE);
+        } else {
+          tft.fillRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_BLUE);
+          tft.setTextColor(ST7735_WHITE);
+        }
+      } else {
+        if (currentChar == ">") {
+          tft.fillRect(xOffset + 1, yOffset + 1, currentCellWidth - 2, cellHeight - 2, ST7735_BLACK);
+          tft.setTextColor(ST7735_GREEN);
+        } else if (currentChar == "<") {
+          tft.fillRect(xOffset + 1, yOffset + 1, currentCellWidth - 2, cellHeight - 2, ST7735_BLACK);
+          tft.setTextColor(ST7735_RED);
+        } else {
+          tft.fillRect(xOffset + 1, yOffset + 1, currentCellWidth - 2, cellHeight - 2, ST7735_BLACK);
+          tft.setTextColor(ST7735_WHITE);
+        }
+        tft.drawRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_WHITE);
+      }
+
+      int textX, textY, textWidth, textHeight;
+      tft.getTextBounds(currentChar, 0, 0, &textX, &textY, &textWidth, &textHeight);
+      textX = xOffset + (currentCellWidth - textWidth) / 2;
+      textY = yOffset + (cellHeight - textHeight) / 2;
+
+      if (currentChar == "SPACE") textX += 1;
+      printText(1, ST7735_WHITE, textX, textY, currentChar);
+    }
+  }
+
+
 
   // ********************************* CALLBACK functions *********************************
 
@@ -379,4 +462,29 @@ public:
       remote->menuSetup();
     }
   }
+
+  static void waitForSignalCallback(UniversalRemote *remote) {
+    remote->waitForSignal();
+  }
+
+  static void delScreenDownCallback(UniversalRemote *remote) {
+    if (remote->onDelScreen && remote->selectedChoice == "No") {
+      remote->selectedChoice = "Yes";
+      remote->drawDelScreenComps(remote->selectedChoice);
+    }
+  }
+
+  static void delScreenUpCallback(UniversalRemote *remote) {
+    if (remote->onDelScreen && remote->selectedChoice == "Yes") {
+      remote->selectedChoice = "No";
+      remote->drawDelScreenComps(remote->selectedChoice);
+    }
+  }
+};
+
+// Created outside of the class
+const char *const UniversalRemote::alphabet[29] = {
+  "Q", "W", "E", "R", "T", "Z", "U", "I", "O", "P",
+  "A", "S", "D", "F", "G", "H", "J", "K", "L",
+  "Y", "X", "C", "V", "SPACE", "B", "N", "M", "<", ">"
 };
