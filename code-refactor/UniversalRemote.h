@@ -20,7 +20,7 @@ private:
   static const char *const alphabet[29];
 
   struct IRSignal {
-    char name[10];
+    String name;
     uint16_t rawData[68];
     uint8_t rawDataLen;
   } __attribute__((packed));
@@ -47,6 +47,8 @@ private:
     cursorCol = 0;
     selectedChoice = "No";
     outputText = "";
+    currentRawData[68] = {};
+    currentRawDataLen = 0;
   }
 
   void drawMenuOption(int posx, int posy, int width, int height) {
@@ -161,27 +163,10 @@ public:
         printText(1, ST7735_WHITE, 30, 85, "Captured!");
         delay(2000);
         createHomeBtn();
-        // Create signal structure
         drawKeyboard();
-        /*
-        1. Create keyboard
-        2. Add typing functionality
-        3. Wait for ok btn to be pressed
-        4. Save signal with custom name
-        5. return to main screen
-        */
-        /*
-        // Fill signal with captured data
-        strcpy(signal.name, "Signal1");  // FIX --> custom name with keyboard
-        memcpy(signal.rawData, currentRawData, currentRawDataLen * sizeof(uint16_t));
-        signal.rawDataLen = currentRawDataLen;
-
-        // Save the captured signal
-        this->saveSignal(signal);
-        */
-
         signalCaptured = true;
       }
+      IrReceiver.resume();
     }
   }
 
@@ -203,8 +188,7 @@ public:
   }
 
   void saveSignal(const IRSignal &signal) {
-    // fix --> get next available eeprom address
-    int address = 0;
+    int address = getNextAvailableEEPROMAddress();
     EEPROM.put(address, signal);
   }
 
@@ -566,6 +550,14 @@ public:
         //
         //
         refreshScreen();
+        // Fill signal with captured data
+        IRSignal signal;
+        signal.name = outputText;
+        memcpy(signal.rawData, currentRawData, currentRawDataLen * sizeof(uint16_t));
+        signal.rawDataLen = currentRawDataLen;
+
+        // Save the captured signal
+        saveSignal(signal);
         printText(2, ST7735_WHITE, 30, 60, "Saved!");
         delay(2000);
         menuSetup();
