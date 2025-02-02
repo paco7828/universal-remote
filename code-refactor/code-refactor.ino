@@ -29,6 +29,13 @@ void loop() {
     uniRemote.handleLeftBtn(UniversalRemote::checkMemoryCallback);
     uniRemote.handleRightBtn(UniversalRemote::memoryFormatCallback);
     uniRemote.handleUpBtn(UniversalRemote::waitForSignalCallback);
+    uniRemote.handleDownBtn(UniversalRemote::listMemoryDataCallback);
+  } else if (uniRemote.onDelScreen) {
+    // Delete screen state handlers ONLY
+    uniRemote.handleUpBtn(UniversalRemote::delScreenUpCallback);
+    uniRemote.handleDownBtn(UniversalRemote::delScreenDownCallback);
+    uniRemote.handleConfirmBtn(UniversalRemote::deleteMemoryCallback);
+    uniRemote.handleHomeBtn(UniversalRemote::menuSetupCallback);
   } else if (!uniRemote.signalCaptured && uniRemote.onListenSignal) {
     // Signal listening state
     UniversalRemote::waitForSignalCallback(&uniRemote);
@@ -40,13 +47,21 @@ void loop() {
     uniRemote.handleLeftBtn(UniversalRemote::moveCursorLeftCallback);
     uniRemote.handleRightBtn(UniversalRemote::moveCursorRightCallback);
     uniRemote.handleConfirmBtn(UniversalRemote::confirmSelectionCallback);
-  } else if (uniRemote.onDelScreen) {
-    // Delete screen state handlers
-    uniRemote.handleDownBtn(UniversalRemote::delScreenDownCallback);
-    uniRemote.handleUpBtn(UniversalRemote::delScreenUpCallback);
-    uniRemote.handleConfirmBtn(UniversalRemote::deleteMemoryCallback);
+  } else if (uniRemote.onSavedSignals) {
+    uniRemote.handleDownBtn(UniversalRemote::scrollDownCallback);
+    uniRemote.handleUpBtn(UniversalRemote::scrollUpCallback);
+    uniRemote.handleConfirmBtn(UniversalRemote::selectSignalCallback);
+  } else if (uniRemote.onInspection) {
+    if (uniRemote.inspectionChoice) {
+      uniRemote.handleLeftBtn(UniversalRemote::inspectionLeftCallback);
+      uniRemote.handleConfirmBtn(UniversalRemote::sendSignalCallback);
+    } else {
+      uniRemote.handleRightBtn(UniversalRemote::inspectionRightCallback);
+      uniRemote.handleConfirmBtn(UniversalRemote::deleteSignalCallback);
+    }
   }
 
+  // Home button handler
   if (!uniRemote.menuShown) {
     uniRemote.handleHomeBtn(UniversalRemote::menuSetupCallback);
   }

@@ -37,12 +37,14 @@ private:
   }
 
   void resetVariables() {
-    menuShown = false;
+    menuShown = true;
     onDelScreen = false;
     onListenSignal = false;
     printedListening = false;
     signalCaptured = false;
     onKeyboard = false;
+    onSavedSignals = false;
+    onInspection = false;
     cursorRow = 0;
     cursorCol = 0;
     selectedChoice = "No";
@@ -87,6 +89,10 @@ public:
   int prevCursorRow = -1;
   int prevCursorCol = -1;
   String outputText = "";
+  bool onSavedSignals = false;
+  int highlightedIndex = 0;
+  bool onInspection = false;
+  bool inspectionChoice = false;
 
   // ********************************* Constructor *********************************
   UniversalRemote(int tft_cs, int tft_rst, int tft_dc, int ir_rx, int ir_tx, int up_btn, int down_btn, int left_btn, int right_btn, int back_btn, int confirm_btn)
@@ -192,15 +198,15 @@ public:
     EEPROM.put(address, signal);
   }
 
+  void sendSignal(const IRSignal &signal) {
+    IrSender.sendRaw(signal.rawData, signal.rawDataLen, 38);
+  }
+
   IRSignal readSignalFromEEPROM(int index) {
     IRSignal signal;
     int address = index * sizeof(IRSignal);
     EEPROM.get(address, signal);
     return signal;
-  }
-
-  void displaySignal() {
-    // Display signal on screen...
   }
 
   // ********************************* Screen functions *********************************
@@ -263,16 +269,17 @@ public:
   }
 
   void deleteSignalFromEEPROM(int index) {
-    // Clear EEPROM data at the given index
-    for (int i = 0; i < sizeof(IRSignal); i++) {
-      EEPROM.write(index * sizeof(IRSignal) + i, 0xFF);
-    }
+    IRSignal signal;
+    int address = index * sizeof(IRSignal);
+    EEPROM.get(address, signal);
+    signal.rawData[0] = 0xFFFF;
+    EEPROM.put(address, signal);
   }
+
 
   // ********************************* MENU OPTION functions *********************************
   void menuSetup() {
     resetVariables();
-    menuShown = true;
     refreshScreen();
     printText(2, ST7735_WHITE, 15, 10, "Universal");
     printText(2, ST7735_WHITE, 30, 30, "Remote");
@@ -293,25 +300,32 @@ public:
   void checkMemory() {
     menuShown = false;
     refreshScreen();
+
+    // Title
     printText(2, ST7735_WHITE, 30, 10, "EEPROM");
 
-    int usedMemory = 0;
-    int nonZeroAddresses = 0;
+    // Calculate memory usage
+    int totalMemory = EEPROM.length();
+    int usedBytes = 0;
+    int validSignals = 0;
 
-    for (int i = 0; i < EEPROM.length(); i++) {
-      byte value = EEPROM.read(i);
-      if (value != 0xFF) {
-        usedMemory++;
-        if (value != 0) {
-          nonZeroAddresses++;
-        }
+    // Count actual used memory and valid signals
+    for (int addr = 0; addr < totalMemory; addr += sizeof(IRSignal)) {
+      IRSignal signal;
+      EEPROM.get(addr, signal);
+
+      // Check if this memory block contains a valid signal
+      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
+        usedBytes += sizeof(IRSignal);
+        validSignals++;
       }
     }
 
-    int remainingMemory = EEPROM.length() - usedMemory;
-    printText(1, ST7735_WHITE, 3, 50, "Total memory: " + String(EEPROM.length()) + " b");
-    printText(1, ST7735_WHITE, 3, 70, "Used memory: " + String(usedMemory) + " b");
-    printText(1, ST7735_WHITE, 3, 90, "Free memory: " + String(remainingMemory) + " b");
+    int freeMemory = totalMemory - usedBytes;
+    printText(1, ST7735_WHITE, 3, 50, "Total memory: " + String(totalMemory) + " b");
+    printText(1, ST7735_WHITE, 3, 70, "Used memory: " + String(usedBytes) + " b");
+    printText(1, ST7735_WHITE, 3, 90, "Free memory: " + String(freeMemory) + " b");
+    printText(1, ST7735_WHITE, 3, 110, "Saved signals: " + String(validSignals));
     createHomeBtn();
   }
 
@@ -345,6 +359,128 @@ public:
     printText(2, ST7735_WHITE, 20, 80, "deleted!");
     delay(2000);
     menuSetup();
+  }
+
+  void listMemoryData() {
+    menuShown = false;
+    onSavedSignals = true;
+    refreshScreen();
+
+    // Header
+    printText(2, ST7735_WHITE, 30, 10, "Saved");
+    printText(2, ST7735_WHITE, 25, 30, "signals");
+
+    // Constants for display
+    const int startY = 65;
+    const int startX = 5;
+    const int lineHeight = 20;
+    const int maxDisplayEntries = 4;
+
+    // First count valid signals
+    int totalValidSignals = 0;
+    IRSignal *validSignals = nullptr;
+
+    // First pass: count valid signals
+    for (int i = 0; i < EEPROM.length() / sizeof(IRSignal); i++) {
+      IRSignal signal;
+      EEPROM.get(i * sizeof(IRSignal), signal);
+      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
+        totalValidSignals++;
+      }
+    }
+
+    // Handle no signals case
+    if (totalValidSignals == 0) {
+      printText(1, ST7735_WHITE, startX, startY, "No signals saved");
+      createHomeBtn();
+      return;
+    }
+
+    // Allocate array for valid signals
+    validSignals = new IRSignal[totalValidSignals];
+    int validIndex = 0;
+
+    // Second pass: collect valid signals
+    for (int i = 0; i < EEPROM.length() / sizeof(IRSignal) && validIndex < totalValidSignals; i++) {
+      IRSignal signal;
+      EEPROM.get(i * sizeof(IRSignal), signal);
+      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
+        validSignals[validIndex++] = signal;
+      }
+    }
+
+    // Ensure highlightedIndex is within bounds
+    highlightedIndex = constrain(highlightedIndex, 0, totalValidSignals - 1);
+
+    // Calculate which page of entries to show
+    int startIndex = (highlightedIndex / maxDisplayEntries) * maxDisplayEntries;
+    int endIndex = min(startIndex + maxDisplayEntries, totalValidSignals);
+
+    // Display signals
+    int y = startY;
+    for (int i = startIndex; i < endIndex; i++) {
+      if (i == highlightedIndex) {
+        // Highlight selected entry
+        tft.fillRect(startX - 2, y - 2, tft.width() - 2 * startX + 4, lineHeight, ST7735_GREEN);
+        tft.setTextColor(ST7735_BLACK);
+      } else {
+        tft.setTextColor(ST7735_WHITE);
+      }
+
+      // Display signal name and length
+      String displayText = validSignals[i].name + " (" + String(validSignals[i].rawDataLen) + ")";
+      printText(1, ST7735_WHITE, startX, y, displayText);
+      y += lineHeight;
+    }
+
+    // Cleanup
+    delete[] validSignals;
+
+    createHomeBtn();
+  }
+
+  void scrollDown() {
+    int totalSignals = 0;
+    for (int i = 0; i < EEPROM.length() / sizeof(IRSignal); i++) {
+      IRSignal signal;
+      EEPROM.get(i * sizeof(IRSignal), signal);
+      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
+        totalSignals++;
+      }
+    }
+
+    if (highlightedIndex < totalSignals - 1) {
+      highlightedIndex++;
+      listMemoryData();
+    }
+  }
+
+  void scrollUp() {
+    if (highlightedIndex > 0) {
+      highlightedIndex--;
+      listMemoryData();
+    }
+  }
+
+  void selectSignal(int index) {
+    onInspection = true;
+    IRSignal signal = readSignalAtIndex(index);
+    refreshScreen();
+    printText(2, ST7735_WHITE, 10, 5, "Name:");
+    printText(2, ST7735_WHITE, 10, 25, signal.name);
+    tft.drawLine(0, 45, 127, 45, ST7735_WHITE);
+    printText(2, ST7735_WHITE, 10, 50, "Signal:");
+    printText(2, ST7735_WHITE, 10, 70, String(signal.rawDataLen));
+    tft.drawLine(0, 90, 127, 90, ST7735_WHITE);
+    createSendBtn(inspectionChoice);
+    createDelBtn(!inspectionChoice);
+  }
+
+  IRSignal readSignalAtIndex(int index) {
+    IRSignal signal;
+    int address = index * sizeof(IRSignal);
+    EEPROM.get(address, signal);
+    return signal;
   }
 
   // ********************************* KEYBOARD functions *********************************
@@ -611,6 +747,10 @@ public:
     remote->drawDelScreenComps(remote->selectedChoice);
   }
 
+  static void listMemoryDataCallback(UniversalRemote *remote) {
+    remote->listMemoryData();
+  }
+
   static void deleteMemoryCallback(UniversalRemote *remote) {
     if (remote->selectedChoice == "Yes") {
       remote->deleteMemory();
@@ -655,6 +795,43 @@ public:
 
   static void confirmSelectionCallback(UniversalRemote *remote) {
     remote->confirmSelection();
+  }
+
+  static void scrollDownCallback(UniversalRemote *remote) {
+    remote->scrollDown();
+  }
+
+  static void scrollUpCallback(UniversalRemote *remote) {
+    remote->scrollUp();
+  }
+
+  static void selectSignalCallback(UniversalRemote *remote) {
+    remote->selectSignal(remote->highlightedIndex);
+  }
+
+  static void inspectionLeftCallback(UniversalRemote *remote) {
+    remote->selectSignal(remote->highlightedIndex);
+    remote->createSendBtn(false);
+    remote->createDelBtn(true);
+    remote->inspectionChoice = false;
+  }
+
+  static void inspectionRightCallback(UniversalRemote *remote) {
+    remote->selectSignal(remote->highlightedIndex);
+    remote->createSendBtn(true);
+    remote->createDelBtn(false);
+    remote->inspectionChoice = true;
+  }
+
+  static void sendSignalCallback(UniversalRemote *remote) {
+    IRSignal signal = remote->readSignalAtIndex(remote->highlightedIndex);
+    remote->sendSignal(signal);
+  }
+
+  static void deleteSignalCallback(UniversalRemote *remote) {
+    remote->deleteSignalFromEEPROM(remote->highlightedIndex);
+    remote->onInspection = false;
+    remote->listMemoryData();
   }
 };
 
