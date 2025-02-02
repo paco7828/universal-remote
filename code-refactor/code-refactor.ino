@@ -35,7 +35,6 @@ void loop() {
     uniRemote.handleUpBtn(UniversalRemote::delScreenUpCallback);
     uniRemote.handleDownBtn(UniversalRemote::delScreenDownCallback);
     uniRemote.handleConfirmBtn(UniversalRemote::deleteMemoryCallback);
-    uniRemote.handleHomeBtn(UniversalRemote::menuSetupCallback);
   } else if (!uniRemote.signalCaptured && uniRemote.onListenSignal) {
     // Signal listening state
     UniversalRemote::waitForSignalCallback(&uniRemote);

@@ -37,7 +37,7 @@ private:
   }
 
   void resetVariables() {
-    menuShown = true;
+    menuShown = false;
     onDelScreen = false;
     onListenSignal = false;
     printedListening = false;
@@ -158,6 +158,7 @@ public:
       if (!printedListening) {
         refreshScreen();
         printText(1, ST7735_WHITE, 30, 85, "Listening...");
+        createHomeBtn();
         printedListening = true;
       }
     }
@@ -280,6 +281,7 @@ public:
   // ********************************* MENU OPTION functions *********************************
   void menuSetup() {
     resetVariables();
+    menuShown = true;
     refreshScreen();
     printText(2, ST7735_WHITE, 15, 10, "Universal");
     printText(2, ST7735_WHITE, 30, 30, "Remote");
@@ -298,34 +300,50 @@ public:
   }
 
   void checkMemory() {
-    menuShown = false;
+    resetVariables();
     refreshScreen();
 
-    // Title
+    // Print title
     printText(2, ST7735_WHITE, 30, 10, "EEPROM");
+    printText(1, ST7735_WHITE, 20, 60, "Loading...");
 
-    // Calculate memory usage
-    int totalMemory = EEPROM.length();
-    int usedBytes = 0;
-    int validSignals = 0;
+    // Calculate memory stats
+    uint16_t totalMemory = EEPROM.length();
+    uint16_t usedBytes = 0;
+    uint8_t validSignals = 0;
 
-    // Count actual used memory and valid signals
-    for (int addr = 0; addr < totalMemory; addr += sizeof(IRSignal)) {
-      IRSignal signal;
-      EEPROM.get(addr, signal);
-
-      // Check if this memory block contains a valid signal
-      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
+    // Count valid signals
+    for (uint16_t addr = 0; addr < totalMemory; addr += sizeof(IRSignal)) {
+      if (EEPROM.read(addr) != 0xFF) {  // Quick check if memory block is used
         usedBytes += sizeof(IRSignal);
         validSignals++;
       }
+      delay(1);
     }
 
-    int freeMemory = totalMemory - usedBytes;
-    printText(1, ST7735_WHITE, 3, 50, "Total memory: " + String(totalMemory) + " b");
-    printText(1, ST7735_WHITE, 3, 70, "Used memory: " + String(usedBytes) + " b");
-    printText(1, ST7735_WHITE, 3, 90, "Free memory: " + String(freeMemory) + " b");
-    printText(1, ST7735_WHITE, 3, 110, "Saved signals: " + String(validSignals));
+    uint16_t freeMemory = totalMemory - usedBytes;
+
+    // Display results
+    refreshScreen();
+    printText(2, ST7735_WHITE, 30, 10, "EEPROM");
+
+    // Print memory info directly without formatting
+    printText(1, ST7735_WHITE, 3, 50, "Total: ");
+    tft.print(totalMemory);
+    tft.print("b");
+
+    printText(1, ST7735_WHITE, 3, 70, "Used: ");
+    tft.print(usedBytes);
+    tft.print("b");
+
+    printText(1, ST7735_WHITE, 3, 90, "Free: ");
+    tft.print(freeMemory);
+    tft.print("b");
+
+    printText(1, ST7735_WHITE, 3, 110, "Signals: ");
+    tft.print(validSignals);
+
+    delay(100);
     createHomeBtn();
   }
 
@@ -392,6 +410,7 @@ public:
     // Handle no signals case
     if (totalValidSignals == 0) {
       printText(1, ST7735_WHITE, startX, startY, "No signals saved");
+      onSavedSignals = false;
       createHomeBtn();
       return;
     }
@@ -440,6 +459,8 @@ public:
   }
 
   void scrollDown() {
+    if (!onSavedSignals) return;
+
     int totalSignals = 0;
     for (int i = 0; i < EEPROM.length() / sizeof(IRSignal); i++) {
       IRSignal signal;
@@ -456,6 +477,7 @@ public:
   }
 
   void scrollUp() {
+    if (!onSavedSignals) return;
     if (highlightedIndex > 0) {
       highlightedIndex--;
       listMemoryData();
@@ -806,6 +828,9 @@ public:
   }
 
   static void selectSignalCallback(UniversalRemote *remote) {
+    if (!remote->onSavedSignals) {
+      return;
+    }
     remote->selectSignal(remote->highlightedIndex);
   }
 
