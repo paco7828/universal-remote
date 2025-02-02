@@ -21,6 +21,7 @@ UniversalRemote uniRemote(TFT_CS, TFT_RST, TFT_DC, IR_RX_PIN, IR_TX_PIN, UP_BTN,
 
 void setup() {
   uniRemote.initRemote();
+  Serial.begin(115200);
 }
 
 void loop() {

@@ -380,83 +380,35 @@ public:
   }
 
   void listMemoryData() {
-    menuShown = false;
-    onSavedSignals = true;
-    refreshScreen();
-
-    // Header
-    printText(2, ST7735_WHITE, 30, 10, "Saved");
-    printText(2, ST7735_WHITE, 25, 30, "signals");
-
-    // Constants for display
-    const int startY = 65;
-    const int startX = 5;
-    const int lineHeight = 20;
-    const int maxDisplayEntries = 4;
-
-    // First count valid signals
-    int totalValidSignals = 0;
-    IRSignal *validSignals = nullptr;
-
-    // First pass: count valid signals
-    for (int i = 0; i < EEPROM.length() / sizeof(IRSignal); i++) {
+    int address = 0;
+    Serial.println("Saved IR Signals:");
+    while (address < EEPROM.length()) {
       IRSignal signal;
-      EEPROM.get(i * sizeof(IRSignal), signal);
-      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
-        totalValidSignals++;
-      }
-    }
+      EEPROM.get(address, signal);
 
-    // Handle no signals case
-    if (totalValidSignals == 0) {
-      printText(1, ST7735_WHITE, startX, startY, "No signals saved");
-      onSavedSignals = false;
-      createHomeBtn();
-      return;
-    }
-
-    // Allocate array for valid signals
-    validSignals = new IRSignal[totalValidSignals];
-    int validIndex = 0;
-
-    // Second pass: collect valid signals
-    for (int i = 0; i < EEPROM.length() / sizeof(IRSignal) && validIndex < totalValidSignals; i++) {
-      IRSignal signal;
-      EEPROM.get(i * sizeof(IRSignal), signal);
-      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
-        validSignals[validIndex++] = signal;
-      }
-    }
-
-    // Ensure highlightedIndex is within bounds
-    highlightedIndex = constrain(highlightedIndex, 0, totalValidSignals - 1);
-
-    // Calculate which page of entries to show
-    int startIndex = (highlightedIndex / maxDisplayEntries) * maxDisplayEntries;
-    int endIndex = min(startIndex + maxDisplayEntries, totalValidSignals);
-
-    // Display signals
-    int y = startY;
-    for (int i = startIndex; i < endIndex; i++) {
-      if (i == highlightedIndex) {
-        // Highlight selected entry
-        tft.fillRect(startX - 2, y - 2, tft.width() - 2 * startX + 4, lineHeight, ST7735_GREEN);
-        tft.setTextColor(ST7735_BLACK);
-      } else {
-        tft.setTextColor(ST7735_WHITE);
+      // Check if the memory slot is empty (0xFF pattern in EEPROM usually means uninitialized memory)
+      if (EEPROM.read(address) == 0xFF) {
+        break;
       }
 
-      // Display signal name and length
-      String displayText = validSignals[i].name + " (" + String(validSignals[i].rawDataLen) + ")";
-      printText(1, ST7735_WHITE, startX, y, displayText);
-      y += lineHeight;
+      // Print signal details
+      Serial.print("Name: ");
+      Serial.println(signal.name);
+      Serial.print("Raw Data Length: ");
+      Serial.println(signal.rawDataLen);
+      Serial.print("Raw Data: ");
+
+      for (uint8_t i = 0; i < signal.rawDataLen; i++) {
+        Serial.print(signal.rawData[i]);
+        Serial.print(" ");
+      }
+      Serial.println("\n-------------------");
+
+      // Move to the next stored signal
+      address += sizeof(IRSignal);
     }
-
-    // Cleanup
-    delete[] validSignals;
-
-    createHomeBtn();
   }
+
 
   void scrollDown() {
     if (!onSavedSignals) return;
