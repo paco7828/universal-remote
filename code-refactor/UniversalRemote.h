@@ -78,6 +78,10 @@ public:
   int cursorCol = 0;
   bool onListenSignal = false;
   bool printedListening = false;
+  bool onKeyboard = false;
+  int prevCursorRow = -1;
+  int prevCursorCol = -1;
+  String outputText = "";
 
   // ********************************* Constructor *********************************
   UniversalRemote(int tft_cs, int tft_rst, int tft_dc, int ir_rx, int ir_tx, int up_btn, int down_btn, int left_btn, int right_btn, int back_btn, int confirm_btn)
@@ -137,8 +141,9 @@ public:
 
   // ********************************* Signal functions *********************************
   void waitForSignal() {
-    refreshScreen();
+    menuShown = false;
     if (!printedListening) {
+      refreshScreen();
       printText(1, ST7735_WHITE, 30, 85, "Listening...");
       printedListening = true;
     }
@@ -355,7 +360,10 @@ public:
 
   // ********************************* KEYBOARD functions *********************************
   void drawKeyboard() {
+    onKeyboard = true;
     refreshScreen();
+    printText(1, ST7735_WHITE, 5, 20, "Save as:");
+    createHomeBtn();
 
     const int cellWidth = 15;
     const int cellHeight = 24;
@@ -433,9 +441,157 @@ public:
       if (currentChar == "SPACE") textX += 1;
       printText(1, ST7735_WHITE, textX, textY, currentChar);
     }
+    prevCursorRow = cursorRow;
+    prevCursorCol = cursorCol;
   }
 
+  void initKeyboardFunctionality() {
+    // Redraw keyboard only if cursor position has changed
+    if (cursorRow != prevCursorRow || cursorCol != prevCursorCol) {
+      drawKeyboard();
+    }
+  }
 
+  void moveCursor(int rowChange, int colChange) {
+    int newRow = cursorRow + rowChange;
+    int newCol = cursorCol + colChange;
+
+    if (newRow < 0) {
+      newRow = 0;
+    } else if (newRow > 3) {
+      newRow = 3;
+    }
+
+    if (newRow == 3) {
+      if (newCol < 0) {
+        newCol = 0;
+      } else if (newCol > 7) {
+        newCol = 7;
+      }
+
+      if (cursorRow == 2 && cursorCol == 7 && rowChange == 1) {
+        return;  // Do nothing if trying to move down from "B"
+      }
+
+      if (cursorRow == 3 && cursorCol == 1 && colChange == -1) {
+        return;  // Do nothing if trying to move left from "N"
+      }
+
+      if (cursorRow == 2 && cursorCol == 0 && rowChange == 1) {
+        return;  // Do nothing if trying to move down from "J"
+      }
+
+      if (cursorRow == 3 && cursorCol == 6 && (colChange == 1 || rowChange == 1)) {
+        return;  // Do nothing if trying to move right or down from ">"
+      }
+
+      if (cursorCol == 2 && colChange == 1) {
+        // Currently on first SPACE cell, move to the next key after SPACE
+        newCol = 4;
+      } else if (cursorCol == 3 && colChange == -1) {
+        newCol = 1;
+      } else if (cursorCol == 3 && colChange == -1) {
+        // Currently on second SPACE cell, move to the first SPACE cell
+        newCol = 2;
+      } else if (cursorCol == 4 && colChange == -1) {
+        // Currently on key after SPACE, move to second SPACE cell
+        newCol = 3;
+      }
+    } else {
+      // Handle rows 0 to 2
+      if (newCol < 0) {
+        newCol = 0;  // Stay within the first column
+      } else if (newCol > 7) {
+        newCol = 7;  // Stay within the last column
+      }
+    }
+
+    // Update cursor position
+    cursorRow = newRow;
+    cursorCol = newCol;
+  }
+
+  void confirmSelection() {
+    // Calculate the index of the selected character
+    int charIndex = cursorRow * 8 + cursorCol;
+
+    // Adjust the index to account for special keys in the bottom row
+    if (cursorRow == 2 && cursorCol == 7) {
+      charIndex = 24;  // Index for "B"
+    } else if (cursorRow == 3) {
+      // Handle the bottom row explicitly for special keys
+      if (cursorCol == 1) charIndex = 25;                         // "N"
+      else if (cursorCol == 2 || cursorCol == 3) charIndex = 23;  // "SPACE"
+      else if (cursorCol == 4) charIndex = 27;                    // "<"
+      else if (cursorCol == 5) charIndex = 26;                    // "M"
+      else if (cursorCol == 6) charIndex = 28;                    // ">"
+    } else {
+      // Adjust for rows 0 to 2
+      if (cursorCol >= 0 && cursorCol <= 7) {
+        charIndex = cursorRow * 8 + cursorCol;
+      }
+    }
+
+    // Ensure charIndex is within bounds
+    if (charIndex < 0 || charIndex >= sizeof(alphabet) / sizeof(alphabet[0])) {
+      return;  // Index out of bounds, do nothing
+    }
+
+    String selectedChar = alphabet[charIndex];
+
+    // Handle character addition, space, and deletion
+    if (selectedChar == "<") {
+      if (outputText.length() > 0 && outputText != "") {
+        outputText.remove(outputText.length() - 1);
+        refreshScreen();
+        drawKeyboard();
+        printText(1, ST7735_WHITE, 55, 20, outputText);
+      }
+    } else if (selectedChar == "SPACE") {
+      if (outputText.length() > 0 && !outputText.endsWith(" ")) {
+        outputText += " ";
+      }
+    } else if (selectedChar == ">") {
+      // Do not add ">" to outputText
+      if (outputText.length() > 0 && outputText != ">" && outputText != ">>") {
+        // Only save if outputText is not just ">" or ">>"
+        // SAVING LOGIC GOES HERE
+        //
+        //
+        //
+        refreshScreen();
+        printText(2, ST7735_WHITE, 30, 60, "Saved!");
+        delay(2000);
+        menuSetup();
+      } else {
+        refreshScreen();
+        printText(2, ST7735_WHITE, 25, 60, "Invalid");
+        printText(2, ST7735_WHITE, 30, 80, "input");
+        delay(2000);
+        refreshScreen();
+        drawKeyboard();
+        printText(1, ST7735_WHITE, 55, 20, outputText);
+      }
+    } else {
+      outputText += selectedChar;
+
+      // Check if the length of outputText has reached or exceeded 11 characters
+      if (outputText.length() > 10) {
+        // Remove the 11th character
+        outputText.remove(10);
+        refreshScreen();
+        printText(2, ST7735_WHITE, 5, 15, "Max length");
+        printText(2, ST7735_WHITE, 10, 35, "10 chars!");
+        printText(1, ST7735_WHITE, 15, 55, "(space included)");
+        delay(2500);
+
+        // Clear the screen and resume the keyboard functionality
+        refreshScreen();
+        drawKeyboard();
+        printText(1, ST7735_WHITE, 55, 20, outputText);
+      }
+    }
+  }
 
   // ********************************* CALLBACK functions *********************************
 
@@ -479,6 +635,26 @@ public:
       remote->selectedChoice = "No";
       remote->drawDelScreenComps(remote->selectedChoice);
     }
+  }
+
+  static void moveCursorUpCallback(UniversalRemote *remote) {
+    remote->moveCursor(-1, 0);
+  }
+
+  static void moveCursorDownCallback(UniversalRemote *remote) {
+    remote->moveCursor(1, 0);
+  }
+
+  static void moveCursorLeftCallback(UniversalRemote *remote) {
+    remote->moveCursor(0, -1);
+  }
+
+  static void moveCursorRightCallback(UniversalRemote *remote) {
+    remote->moveCursor(0, 1);
+  }
+
+  static void confirmSelectionCallback(UniversalRemote *remote) {
+    remote->confirmSelection();
   }
 };
 

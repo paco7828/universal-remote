@@ -19,21 +19,41 @@
 
 UniversalRemote uniRemote(TFT_CS, TFT_RST, TFT_DC, IR_RX_PIN, IR_TX_PIN, UP_BTN, DOWN_BTN, LEFT_BTN, RIGHT_BTN, BACK_BTN, CONFIRM_BTN);
 
-void setup() {
+void setup()
+{
   uniRemote.initRemote();
 }
 
-void loop() {
-  if (uniRemote.menuShown) {
+void loop()
+{
+  if (uniRemote.menuShown)
+  {
     uniRemote.handleLeftBtn(UniversalRemote::checkMemoryCallback);
     uniRemote.handleRightBtn(UniversalRemote::memoryFormatCallback);
     uniRemote.handleUpBtn(UniversalRemote::waitForSignalCallback);
-  } else if (uniRemote.onDelScreen) {
+  }
+  else if (!uniRemote.signalCaptured)
+  {
+    UniversalRemote::waitForSignalCallback(&uniRemote);
+  }
+  else if (uniRemote.onKeyboard)
+  {
+    uniRemote.initKeyboardFunctionality();
+    uniRemote.handleUpBtn(UniversalRemote::moveCursorUpCallback);
+    uniRemote.handleDownBtn(UniversalRemote::moveCursorDownCallback);
+    uniRemote.handleLeftBtn(UniversalRemote::moveCursorLeftCallback);
+    uniRemote.handleRightBtn(UniversalRemote::moveCursorRightCallback);
+    uniRemote.handleConfirmBtn(UniversalRemote::confirmSelectionCallback);
+  }
+  else if (uniRemote.onDelScreen)
+  {
     uniRemote.handleDownBtn(UniversalRemote::delScreenDownCallback);
     uniRemote.handleUpBtn(UniversalRemote::delScreenUpCallback);
     uniRemote.handleConfirmBtn(UniversalRemote::deleteMemoryCallback);
     uniRemote.handleHomeBtn(UniversalRemote::menuSetupCallback);
-  } else {
+  }
+  else
+  {
     uniRemote.handleHomeBtn(UniversalRemote::menuSetupCallback);
   }
 }
