@@ -38,12 +38,15 @@ private:
 
   void resetVariables() {
     menuShown = false;
-    onListenSignal = false;
     onDelScreen = false;
+    onListenSignal = false;
+    printedListening = false;
     signalCaptured = false;
+    onKeyboard = false;
     cursorRow = 0;
     cursorCol = 0;
     selectedChoice = "No";
+    outputText = "";
   }
 
   void drawMenuOption(int posx, int posy, int width, int height) {
@@ -141,11 +144,14 @@ public:
 
   // ********************************* Signal functions *********************************
   void waitForSignal() {
-    menuShown = false;
-    if (!printedListening) {
-      refreshScreen();
-      printText(1, ST7735_WHITE, 30, 85, "Listening...");
-      printedListening = true;
+    if (!onListenSignal) {
+      menuShown = false;
+      onListenSignal = true;
+      if (!printedListening) {
+        refreshScreen();
+        printText(1, ST7735_WHITE, 30, 85, "Listening...");
+        printedListening = true;
+      }
     }
     if (!signalCaptured) {
       if (IrReceiver.decode()) {
@@ -156,7 +162,6 @@ public:
         delay(2000);
         createHomeBtn();
         // Create signal structure
-        IRSignal signal;
         drawKeyboard();
         /*
         1. Create keyboard
@@ -449,6 +454,7 @@ public:
     // Redraw keyboard only if cursor position has changed
     if (cursorRow != prevCursorRow || cursorCol != prevCursorCol) {
       drawKeyboard();
+      printText(1, ST7735_WHITE, 55, 20, outputText);
     }
   }
 
@@ -591,11 +597,13 @@ public:
         printText(1, ST7735_WHITE, 55, 20, outputText);
       }
     }
+    printText(1, ST7735_WHITE, 55, 20, outputText);
   }
 
   // ********************************* CALLBACK functions *********************************
 
-  static void menuSetupCallback(UniversalRemote *remote) {
+  static void
+  menuSetupCallback(UniversalRemote *remote) {
     remote->menuSetup();
   }
 
