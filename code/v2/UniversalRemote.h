@@ -51,6 +51,7 @@ private:
     outputText[0] = '\0';
     currentRawData[68] = {};
     currentRawDataLen = 0;
+    inspectionChoice = false;
   }
 
   void drawMenuOption(int posx, int posy, int width, int height) {
