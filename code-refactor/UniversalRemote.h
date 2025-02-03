@@ -20,7 +20,7 @@ private:
   static const char *const alphabet[29];
 
   struct IRSignal {
-    String name;
+    char name[10];
     uint16_t rawData[68];
     uint8_t rawDataLen;
   } __attribute__((packed));
@@ -195,8 +195,22 @@ public:
   }
 
   void saveSignal(const IRSignal &signal) {
+    // Find next available address
     int address = getNextAvailableEEPROMAddress();
-    EEPROM.put(address, signal);
+
+    // Create a temporary signal
+    IRSignal tempSignal;
+
+    // Copy the name (it's already a char array)
+    strncpy(tempSignal.name, signal.name, sizeof(tempSignal.name) - 1);
+    tempSignal.name[sizeof(tempSignal.name) - 1] = '\0';  // Ensure null termination
+
+    // Copy raw data
+    memcpy(tempSignal.rawData, signal.rawData, sizeof(uint16_t) * signal.rawDataLen);
+    tempSignal.rawDataLen = signal.rawDataLen;
+
+    // Write to EEPROM
+    EEPROM.put(address, tempSignal);
   }
 
   void sendSignal(const IRSignal &signal) {
@@ -380,35 +394,53 @@ public:
   }
 
   void listMemoryData() {
+    menuShown = false;
+    refreshScreen();
+
     int address = 0;
-    Serial.println("Saved IR Signals:");
+    int signalCount = 0;
+
     while (address < EEPROM.length()) {
+      // Read signal from EEPROM
       IRSignal signal;
       EEPROM.get(address, signal);
 
-      // Check if the memory slot is empty (0xFF pattern in EEPROM usually means uninitialized memory)
-      if (EEPROM.read(address) == 0xFF) {
-        break;
+      // Check if memory slot is empty or corrupted
+      if (EEPROM.read(address) == 0xFF || signal.rawData[0] == 0xFFFF) {
+        address += sizeof(IRSignal);
+        continue;
       }
 
-      // Print signal details
-      Serial.print("Name: ");
+      Serial.print(F("Name: "));
+
+      // Print the signal name directly since it's already a char array
       Serial.println(signal.name);
-      Serial.print("Raw Data Length: ");
+
+      Serial.print(F("Raw Data Length: "));
       Serial.println(signal.rawDataLen);
-      Serial.print("Raw Data: ");
+      Serial.print(F("Raw Data: "));
 
-      for (uint8_t i = 0; i < signal.rawDataLen; i++) {
+      // Print first few raw data values
+      for (uint8_t i = 0; i < min(signal.rawDataLen, (uint8_t)8); i++) {
         Serial.print(signal.rawData[i]);
-        Serial.print(" ");
+        Serial.print(' ');
       }
-      Serial.println("\n-------------------");
+      if (signal.rawDataLen > 8) {
+        Serial.print(F("..."));
+      }
 
-      // Move to the next stored signal
+      Serial.println(F("\n-------------------"));
+      signalCount++;
       address += sizeof(IRSignal);
     }
-  }
 
+    if (signalCount == 0) {
+      Serial.println(F("No saved signals."));
+    } else {
+      Serial.print(F("Total signals found: "));
+      Serial.println(signalCount);
+    }
+  }
 
   void scrollDown() {
     if (!onSavedSignals) return;
@@ -417,7 +449,7 @@ public:
     for (int i = 0; i < EEPROM.length() / sizeof(IRSignal); i++) {
       IRSignal signal;
       EEPROM.get(i * sizeof(IRSignal), signal);
-      if (signal.rawData[0] != 0xFFFF && signal.name.length() > 0) {
+      if (signal.rawData[0] != 0xFFFF && strlen(signal.name) > 0) {
         totalSignals++;
       }
     }
@@ -612,6 +644,7 @@ public:
   }
 
   void confirmSelection() {
+    Serial.println("CONFIRMED SELECTION!");
     // Calculate the index of the selected character
     int charIndex = cursorRow * 8 + cursorCol;
 
@@ -662,7 +695,8 @@ public:
         refreshScreen();
         // Fill signal with captured data
         IRSignal signal;
-        signal.name = outputText;
+        strncpy(signal.name, outputText.c_str(), sizeof(signal.name) - 1);
+        signal.name[sizeof(signal.name) - 1] = '\0';  // Ensure null termination
         memcpy(signal.rawData, currentRawData, currentRawDataLen * sizeof(uint16_t));
         signal.rawDataLen = currentRawDataLen;
 
