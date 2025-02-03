@@ -48,7 +48,7 @@ private:
     cursorRow = 0;
     cursorCol = 0;
     selectedChoice = "No";
-    outputText = "";
+    outputText[0] = '\0';
     currentRawData[68] = {};
     currentRawDataLen = 0;
   }
@@ -88,7 +88,7 @@ public:
   bool onKeyboard = false;
   int prevCursorRow = -1;
   int prevCursorCol = -1;
-  String outputText = "";
+  char outputText[11] = "";
   bool onSavedSignals = false;
   int highlightedIndex = 0;
   bool onInspection = false;
@@ -195,22 +195,8 @@ public:
   }
 
   void saveSignal(const IRSignal &signal) {
-    // Find next available address
     int address = getNextAvailableEEPROMAddress();
-
-    // Create a temporary signal
-    IRSignal tempSignal;
-
-    // Copy the name (it's already a char array)
-    strncpy(tempSignal.name, signal.name, sizeof(tempSignal.name) - 1);
-    tempSignal.name[sizeof(tempSignal.name) - 1] = '\0';  // Ensure null termination
-
-    // Copy raw data
-    memcpy(tempSignal.rawData, signal.rawData, sizeof(uint16_t) * signal.rawDataLen);
-    tempSignal.rawDataLen = signal.rawDataLen;
-
-    // Write to EEPROM
-    EEPROM.put(address, tempSignal);
+    EEPROM.put(address, signal);
   }
 
   void sendSignal(const IRSignal &signal) {
@@ -394,53 +380,35 @@ public:
   }
 
   void listMemoryData() {
-    menuShown = false;
-    refreshScreen();
-
     int address = 0;
-    int signalCount = 0;
-
+    Serial.println("Saved IR Signals:");
     while (address < EEPROM.length()) {
-      // Read signal from EEPROM
       IRSignal signal;
       EEPROM.get(address, signal);
 
-      // Check if memory slot is empty or corrupted
-      if (EEPROM.read(address) == 0xFF || signal.rawData[0] == 0xFFFF) {
-        address += sizeof(IRSignal);
-        continue;
+      // Check if the memory slot is empty (0xFF pattern in EEPROM usually means uninitialized memory)
+      if (EEPROM.read(address) == 0xFF) {
+        break;
       }
 
-      Serial.print(F("Name: "));
-
-      // Print the signal name directly since it's already a char array
+      // Print signal details
+      Serial.print("Name: ");
       Serial.println(signal.name);
-
-      Serial.print(F("Raw Data Length: "));
+      Serial.print("Raw Data Length: ");
       Serial.println(signal.rawDataLen);
-      Serial.print(F("Raw Data: "));
+      Serial.print("Raw Data: ");
 
-      // Print first few raw data values
-      for (uint8_t i = 0; i < min(signal.rawDataLen, (uint8_t)8); i++) {
+      for (uint8_t i = 0; i < signal.rawDataLen; i++) {
         Serial.print(signal.rawData[i]);
-        Serial.print(' ');
+        Serial.print(" ");
       }
-      if (signal.rawDataLen > 8) {
-        Serial.print(F("..."));
-      }
+      Serial.println("\n-------------------");
 
-      Serial.println(F("\n-------------------"));
-      signalCount++;
+      // Move to the next stored signal
       address += sizeof(IRSignal);
     }
-
-    if (signalCount == 0) {
-      Serial.println(F("No saved signals."));
-    } else {
-      Serial.print(F("Total signals found: "));
-      Serial.println(signalCount);
-    }
   }
+
 
   void scrollDown() {
     if (!onSavedSignals) return;
@@ -580,7 +548,7 @@ public:
     // Redraw keyboard only if cursor position has changed
     if (cursorRow != prevCursorRow || cursorCol != prevCursorCol) {
       drawKeyboard();
-      printText(1, ST7735_WHITE, 55, 20, outputText);
+      printText(1, ST7735_GREEN, 55, 20, outputText);
     }
   }
 
@@ -644,7 +612,6 @@ public:
   }
 
   void confirmSelection() {
-    Serial.println("CONFIRMED SELECTION!");
     // Calculate the index of the selected character
     int charIndex = cursorRow * 8 + cursorCol;
 
@@ -674,33 +641,34 @@ public:
 
     // Handle character addition, space, and deletion
     if (selectedChar == "<") {
-      if (outputText.length() > 0 && outputText != "") {
-        outputText.remove(outputText.length() - 1);
-        refreshScreen();
+      if (strlen(outputText) > 0 && outputText != "") {
+        int len = strlen(outputText);
+        if (len > 0) {
+          outputText[len - 1] = '\0';  // Remove last character
+        }
         drawKeyboard();
-        printText(1, ST7735_WHITE, 55, 20, outputText);
+        printText(1, ST7735_GREEN, 55, 20, outputText);
       }
     } else if (selectedChar == "SPACE") {
-      if (outputText.length() > 0 && !outputText.endsWith(" ")) {
-        outputText += " ";
+      int len = strlen(outputText);  // Get the length of the string
+      if (len > 0 && outputText[len - 1] != ' ') {
+        // Ensure there is space left in the char array before appending
+        if (len < sizeof(outputText) - 1) {
+          outputText[len] = ' ';
+          outputText[len + 1] = '\0';  // Null-terminate the string
+        }
       }
     } else if (selectedChar == ">") {
       // Do not add ">" to outputText
-      if (outputText.length() > 0 && outputText != ">" && outputText != ">>") {
+      if (strlen(outputText) > 0 && outputText != ">" && outputText != ">>") {
         // Only save if outputText is not just ">" or ">>"
-        // SAVING LOGIC GOES HERE
-        //
-        //
-        //
         refreshScreen();
         // Fill signal with captured data
         IRSignal signal;
-        strncpy(signal.name, outputText.c_str(), sizeof(signal.name) - 1);
+        strncpy(signal.name, outputText, sizeof(signal.name) - 1);
         signal.name[sizeof(signal.name) - 1] = '\0';  // Ensure null termination
-        memcpy(signal.rawData, currentRawData, currentRawDataLen * sizeof(uint16_t));
+        memcpy(signal.rawData, currentRawData, sizeof(signal.rawData));
         signal.rawDataLen = currentRawDataLen;
-
-        // Save the captured signal
         saveSignal(signal);
         printText(2, ST7735_WHITE, 30, 60, "Saved!");
         delay(2000);
@@ -710,30 +678,28 @@ public:
         printText(2, ST7735_WHITE, 25, 60, "Invalid");
         printText(2, ST7735_WHITE, 30, 80, "input");
         delay(2000);
-        refreshScreen();
         drawKeyboard();
-        printText(1, ST7735_WHITE, 55, 20, outputText);
+        printText(1, ST7735_GREEN, 55, 20, outputText);
       }
     } else {
-      outputText += selectedChar;
-
-      // Check if the length of outputText has reached or exceeded 11 characters
-      if (outputText.length() > 10) {
-        // Remove the 11th character
-        outputText.remove(10);
-        refreshScreen();
-        printText(2, ST7735_WHITE, 5, 15, "Max length");
-        printText(2, ST7735_WHITE, 10, 35, "10 chars!");
-        printText(1, ST7735_WHITE, 15, 55, "(space included)");
-        delay(2500);
-
-        // Clear the screen and resume the keyboard functionality
-        refreshScreen();
-        drawKeyboard();
-        printText(1, ST7735_WHITE, 55, 20, outputText);
-      }
+      strncat(outputText, selectedChar.c_str(), 1);  // Append one character
     }
-    printText(1, ST7735_WHITE, 55, 20, outputText);
+
+    // Check if the length of outputText has reached or exceeded 11 characters
+    if (strlen(outputText) > 10) {
+      // Remove the 11th character
+      outputText[10] = '\0';
+      refreshScreen();
+      printText(2, ST7735_WHITE, 5, 15, "Max length");
+      printText(2, ST7735_WHITE, 10, 35, "10 chars!");
+      printText(1, ST7735_WHITE, 15, 55, "(space included)");
+      delay(2500);
+
+      // Clear the screen and resume the keyboard functionality
+      drawKeyboard();
+      printText(1, ST7735_GREEN, 55, 20, outputText);
+    }
+    printText(1, ST7735_GREEN, 55, 20, outputText);
   }
 
   // ********************************* CALLBACK functions *********************************
