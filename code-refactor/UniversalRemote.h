@@ -93,6 +93,7 @@ public:
   int highlightedIndex = 0;
   bool onInspection = false;
   bool inspectionChoice = false;
+  int signalCount = 0;
 
   // ********************************* Constructor *********************************
   UniversalRemote(int tft_cs, int tft_rst, int tft_dc, int ir_rx, int ir_tx, int up_btn, int down_btn, int left_btn, int right_btn, int back_btn, int confirm_btn)
@@ -166,12 +167,22 @@ public:
       if (IrReceiver.decode()) {
         // Capture signal
         captureSignal();
-        refreshScreen();
-        printText(1, ST7735_WHITE, 30, 85, "Captured!");
-        delay(2000);
-        createHomeBtn();
-        drawKeyboard();
-        signalCaptured = true;
+
+        // Add signal validation
+        if (currentRawDataLen < 10) {  // Adjust threshold as needed
+          refreshScreen();
+          printText(2, ST7735_WHITE, 20, 60, "Invalid");
+          printText(2, ST7735_WHITE, 20, 80, "signal!");
+          delay(2000);
+          menuSetup();
+        } else {
+          refreshScreen();
+          printText(1, ST7735_WHITE, 30, 85, "Captured!");
+          delay(2000);
+          createHomeBtn();
+          drawKeyboard();
+          signalCaptured = true;
+        }
       }
       IrReceiver.resume();
     }
@@ -270,11 +281,35 @@ public:
   }
 
   void deleteSignalFromEEPROM(int index) {
-    IRSignal signal;
-    int address = index * sizeof(IRSignal);
-    EEPROM.get(address, signal);
-    signal.rawData[0] = 0xFFFF;
-    EEPROM.put(address, signal);
+    int address = 0;
+    int currentIndex = 0;
+    bool signalDeleted = false;
+
+    // Prevent potential out-of-bounds access
+    if (index < 0) return;
+
+    while (address < EEPROM.length()) {
+      IRSignal signal;
+      EEPROM.get(address, signal);
+
+      // Skip already deleted or empty signals
+      if (EEPROM.read(address) == 0xFF || signal.rawData[0] == 0xFFFF) {
+        address += sizeof(IRSignal);
+        continue;
+      }
+
+      if (currentIndex == index) {
+        // Explicitly mark as deleted
+        memset(&signal, 0xFF, sizeof(IRSignal));
+        signal.rawData[0] = 0xFFFF;
+        EEPROM.put(address, signal);
+        signalDeleted = true;
+        break;
+      }
+
+      currentIndex++;
+      address += sizeof(IRSignal);
+    }
   }
 
 
@@ -380,56 +415,84 @@ public:
   }
 
   void listMemoryData() {
+    resetVariables();
+    onSavedSignals = true;
+    refreshScreen();
     int address = 0;
-    Serial.println("Saved IR Signals:");
+    int x = 5;
+    int y = 65;
+    int maxEntries = 4;
+    int lineHeight = 20;
+    int entryCount = 0;
+    int displayIndex = 0;
+
+    // Ensure highlightedIndex stays within valid range
+    highlightedIndex = max(0, min(highlightedIndex, signalCount - 1));
+
+    // Count total valid signals first
+    signalCount = 0;
     while (address < EEPROM.length()) {
       IRSignal signal;
       EEPROM.get(address, signal);
 
-      // Check if the memory slot is empty (0xFF pattern in EEPROM usually means uninitialized memory)
+      if (EEPROM.read(address) == 0xFF) {
+        break;
+      }
+      signalCount++;
+      address += sizeof(IRSignal);
+    }
+
+    // Reset address for actual display
+    address = 0;
+    entryCount = 0;
+    displayIndex = 0;
+
+    printText(2, ST7735_WHITE, 30, 10, "Saved");
+    printText(2, ST7735_WHITE, 25, 30, "signals");
+
+    while (address < EEPROM.length() && entryCount < maxEntries) {
+      IRSignal signal;
+      EEPROM.get(address, signal);
+
       if (EEPROM.read(address) == 0xFF) {
         break;
       }
 
-      // Print signal details
-      Serial.print("Name: ");
-      Serial.println(signal.name);
-      Serial.print("Raw Data Length: ");
-      Serial.println(signal.rawDataLen);
-      Serial.print("Raw Data: ");
+      String displayText = String(signal.name) + " - " + String(signal.rawDataLen);
+      uint16_t textColor;
 
-      for (uint8_t i = 0; i < signal.rawDataLen; i++) {
-        Serial.print(signal.rawData[i]);
-        Serial.print(" ");
+      // Highlight the currently selected signal
+      if (displayIndex == highlightedIndex) {
+        tft.fillRect(3, y - 7, tft.width() - 6, lineHeight, ST7735_GREEN);
+        textColor = ST7735_BLACK;
+      } else {
+        tft.fillRect(0, y - 7, tft.width(), lineHeight, ST7735_BLACK);
+        textColor = ST7735_WHITE;
       }
-      Serial.println("\n-------------------");
 
-      // Move to the next stored signal
+      printText(1, textColor, x, y, displayText.c_str());
+      y += lineHeight;
+      entryCount++;
+
+      displayIndex++;
       address += sizeof(IRSignal);
+    }
+
+    if (signalCount == 0) {
+      printText(1, ST7735_WHITE, x, y, "No saved signals.");
+      delay(2000);
+      menuSetup();
     }
   }
 
-
   void scrollDown() {
-    if (!onSavedSignals) return;
-
-    int totalSignals = 0;
-    for (int i = 0; i < EEPROM.length() / sizeof(IRSignal); i++) {
-      IRSignal signal;
-      EEPROM.get(i * sizeof(IRSignal), signal);
-      if (signal.rawData[0] != 0xFFFF && strlen(signal.name) > 0) {
-        totalSignals++;
-      }
-    }
-
-    if (highlightedIndex < totalSignals - 1) {
+    if (highlightedIndex < signalCount - 1) {
       highlightedIndex++;
       listMemoryData();
     }
   }
 
   void scrollUp() {
-    if (!onSavedSignals) return;
     if (highlightedIndex > 0) {
       highlightedIndex--;
       listMemoryData();
@@ -437,17 +500,18 @@ public:
   }
 
   void selectSignal(int index) {
+    resetVariables();
     onInspection = true;
-    IRSignal signal = readSignalAtIndex(index);
     refreshScreen();
+    IRSignal signal = readSignalAtIndex(index);
     printText(2, ST7735_WHITE, 10, 5, "Name:");
     printText(2, ST7735_WHITE, 10, 25, signal.name);
     tft.drawLine(0, 45, 127, 45, ST7735_WHITE);
-    printText(2, ST7735_WHITE, 10, 50, "Signal:");
-    printText(2, ST7735_WHITE, 10, 70, String(signal.rawDataLen));
+    printText(2, ST7735_WHITE, 20, 50, "Length:");
+    printText(2, ST7735_WHITE, 50, 70, String(signal.rawDataLen));
     tft.drawLine(0, 90, 127, 90, ST7735_WHITE);
-    createSendBtn(inspectionChoice);
-    createDelBtn(!inspectionChoice);
+    createSendBtn(false);
+    createDelBtn(true);
   }
 
   IRSignal readSignalAtIndex(int index) {
@@ -469,6 +533,7 @@ public:
     const int spaceWidth = 2 * cellWidth;
     const int startX = 5;
     const int startY = 40;
+    uint16_t textColor;
 
     int row, col;
     for (int i = 0; i < 29; i++) {
@@ -479,7 +544,7 @@ public:
       if (currentChar == "N") {
         row = 3;
         col = 1;
-      } else if (currentChar == "SPACE") {
+      } else if (currentChar == "_") {
         row = 3;
         col = 2;
         currentCellWidth = spaceWidth;
@@ -507,27 +572,27 @@ public:
       xOffset = startX + col * cellWidth;
       yOffset = startY + row * cellHeight;
 
-      if (row == cursorRow && (col == cursorCol || (currentChar == "SPACE" && (cursorCol == 2 || cursorCol == 3)))) {
+      if (row == cursorRow && (col == cursorCol || (currentChar == "_" && (cursorCol == 2 || cursorCol == 3)))) {
         if (currentChar == ">") {
           tft.fillRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_GREEN);
-          tft.setTextColor(ST7735_BLACK);
+          textColor = ST7735_BLACK;
         } else if (currentChar == "<") {
           tft.fillRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_RED);
-          tft.setTextColor(ST7735_WHITE);
+          textColor = ST7735_WHITE;
         } else {
           tft.fillRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_BLUE);
-          tft.setTextColor(ST7735_WHITE);
+          textColor = ST7735_WHITE;
         }
       } else {
         if (currentChar == ">") {
           tft.fillRect(xOffset + 1, yOffset + 1, currentCellWidth - 2, cellHeight - 2, ST7735_BLACK);
-          tft.setTextColor(ST7735_GREEN);
+          textColor = ST7735_GREEN;
         } else if (currentChar == "<") {
           tft.fillRect(xOffset + 1, yOffset + 1, currentCellWidth - 2, cellHeight - 2, ST7735_BLACK);
-          tft.setTextColor(ST7735_RED);
+          textColor = ST7735_RED;
         } else {
           tft.fillRect(xOffset + 1, yOffset + 1, currentCellWidth - 2, cellHeight - 2, ST7735_BLACK);
-          tft.setTextColor(ST7735_WHITE);
+          textColor = ST7735_WHITE;
         }
         tft.drawRect(xOffset, yOffset, currentCellWidth, cellHeight, ST7735_WHITE);
       }
@@ -537,18 +602,19 @@ public:
       textX = xOffset + (currentCellWidth - textWidth) / 2;
       textY = yOffset + (cellHeight - textHeight) / 2;
 
-      if (currentChar == "SPACE") textX += 1;
-      printText(1, ST7735_WHITE, textX, textY, currentChar);
+      if (currentChar == "_") textX += 1;
+      printText(1, textColor, textX, textY, currentChar);
     }
     prevCursorRow = cursorRow;
     prevCursorCol = cursorCol;
+
+    printText(1, ST7735_GREEN, 55, 20, outputText);
   }
 
   void initKeyboardFunctionality() {
     // Redraw keyboard only if cursor position has changed
     if (cursorRow != prevCursorRow || cursorCol != prevCursorCol) {
       drawKeyboard();
-      printText(1, ST7735_GREEN, 55, 20, outputText);
     }
   }
 
@@ -586,15 +652,15 @@ public:
       }
 
       if (cursorCol == 2 && colChange == 1) {
-        // Currently on first SPACE cell, move to the next key after SPACE
+        // Currently on first _ cell, move to the next key after _
         newCol = 4;
       } else if (cursorCol == 3 && colChange == -1) {
         newCol = 1;
       } else if (cursorCol == 3 && colChange == -1) {
-        // Currently on second SPACE cell, move to the first SPACE cell
+        // Currently on second _ cell, move to the first _ cell
         newCol = 2;
       } else if (cursorCol == 4 && colChange == -1) {
-        // Currently on key after SPACE, move to second SPACE cell
+        // Currently on key after _, move to second _ cell
         newCol = 3;
       }
     } else {
@@ -621,7 +687,7 @@ public:
     } else if (cursorRow == 3) {
       // Handle the bottom row explicitly for special keys
       if (cursorCol == 1) charIndex = 25;                         // "N"
-      else if (cursorCol == 2 || cursorCol == 3) charIndex = 23;  // "SPACE"
+      else if (cursorCol == 2 || cursorCol == 3) charIndex = 23;  // "_"
       else if (cursorCol == 4) charIndex = 27;                    // "<"
       else if (cursorCol == 5) charIndex = 26;                    // "M"
       else if (cursorCol == 6) charIndex = 28;                    // ">"
@@ -649,7 +715,7 @@ public:
         drawKeyboard();
         printText(1, ST7735_GREEN, 55, 20, outputText);
       }
-    } else if (selectedChar == "SPACE") {
+    } else if (selectedChar == "_") {
       int len = strlen(outputText);  // Get the length of the string
       if (len > 0 && outputText[len - 1] != ' ') {
         // Ensure there is space left in the char array before appending
@@ -670,7 +736,7 @@ public:
         memcpy(signal.rawData, currentRawData, sizeof(signal.rawData));
         signal.rawDataLen = currentRawDataLen;
         saveSignal(signal);
-        printText(2, ST7735_WHITE, 30, 60, "Saved!");
+        printText(2, ST7735_WHITE, 30, 70, "Saved!");
         delay(2000);
         menuSetup();
       } else {
@@ -780,24 +846,19 @@ public:
   }
 
   static void selectSignalCallback(UniversalRemote *remote) {
-    if (!remote->onSavedSignals) {
-      return;
-    }
     remote->selectSignal(remote->highlightedIndex);
   }
 
   static void inspectionLeftCallback(UniversalRemote *remote) {
-    remote->selectSignal(remote->highlightedIndex);
+    remote->inspectionChoice = false;
     remote->createSendBtn(false);
     remote->createDelBtn(true);
-    remote->inspectionChoice = false;
   }
 
   static void inspectionRightCallback(UniversalRemote *remote) {
-    remote->selectSignal(remote->highlightedIndex);
+    remote->inspectionChoice = true;
     remote->createSendBtn(true);
     remote->createDelBtn(false);
-    remote->inspectionChoice = true;
   }
 
   static void sendSignalCallback(UniversalRemote *remote) {
@@ -807,7 +868,21 @@ public:
 
   static void deleteSignalCallback(UniversalRemote *remote) {
     remote->deleteSignalFromEEPROM(remote->highlightedIndex);
-    remote->onInspection = false;
+
+    // Reset signal count and potentially adjust highlighted index
+    remote->signalCount--;
+
+    // If the highlighted index is now beyond the remaining signals, adjust it
+    if (remote->highlightedIndex >= remote->signalCount) {
+      remote->highlightedIndex = max(0, remote->signalCount - 1);
+    }
+
+    // Optional: Show a brief "Deleted" message
+    remote->refreshScreen();
+    remote->printText(2, ST7735_WHITE, 20, 60, "Deleted!");
+    delay(1000);
+
+    // Redisplay the memory data
     remote->listMemoryData();
   }
 };
@@ -816,5 +891,5 @@ public:
 const char *const UniversalRemote::alphabet[29] = {
   "Q", "W", "E", "R", "T", "Z", "U", "I", "O", "P",
   "A", "S", "D", "F", "G", "H", "J", "K", "L",
-  "Y", "X", "C", "V", "SPACE", "B", "N", "M", "<", ">"
+  "Y", "X", "C", "V", "_", "B", "N", "M", "<", ">"
 };
