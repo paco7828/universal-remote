@@ -1,0 +1,11 @@
+-microcontroller - AR-NANOCH-UNS-TYPE-C - https://www.hestore.hu/prod_10044467.html#
+-step up module - MT3608-2A - https://www.hestore.hu/prod_10038537.html#
+-IR receiver - IRM-3638T - https://www.hestore.hu/prod_10045411.html
+-IR blaster - IRE940-5 - https://www.hestore.hu/prod_10041889.html
+-power switch - LVSR-12-RD - https://www.hestore.hu/prod_10036786.html
+-battery charger module - TP4056-1A-USBC - https://www.hestore.hu/prod_10042093.html
+-battery - KXD 383450PL M - https://www.hestore.hu/prod_10036161.html
+-Resistors:
+    -IR blaster - 220 R 1% - https://www.hestore.hu/prod_10020500.html
+    -6x for buttons - 10 K 1% - https://www.hestore.hu/prod_10020541.html
+-Screen - 1.8 Inch 8Pin 128*160 RGB TFT LCD Screen Display Module SPI Interface ST7735 IC Driver - https://www.aliexpress.com/i/32988162684.html
