@@ -1,0 +1,9 @@
+-battery
+-battery charger
+-screen
+-IR receiver
+-IR transmitter
+-6x buttons
+-MCU - ATMEGA328P-AU
+-Micro USB
+-CH340G
