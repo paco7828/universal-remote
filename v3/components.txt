@@ -23,6 +23,7 @@ Red led - https://www.hestore.hu/prod_10043215.html
 2x 1k resistors - https://www.hestore.hu/prod_10031299.html
 1.2k resistor - https://www.hestore.hu/prod_10001268.html
 Battery - https://www.hestore.hu/prod_10036161.html
+Battery JST connector - https://www.hestore.hu/prod_10047452.html
 Step up converter IC - https://www.hestore.hu/prod_10032041.html
 4.7uF capacitor - https://www.hestore.hu/prod_10033975.html
 4.7uH inductor - https://www.hestore.hu/prod_10047163.html
