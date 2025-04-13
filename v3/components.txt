@@ -4,7 +4,7 @@ CH340G - https://www.hestore.hu/prod_10036442.html
 2x 100nF capacitor - https://www.hestore.hu/prod_10001122.html
 Micro USB - https://www.hestore.hu/prod_10032693.html
 16MHz crystal - https://www.hestore.hu/prod_10021434.html
-2x 22pF capacitor - https://www.hestore.hu/prod_10001131.html
+4x 22pF capacitor - https://www.hestore.hu/prod_10001131.html
 6x TACT button - https://www.hestore.hu/prod_10044879.html
 IR transmitter - https://www.hestore.hu/prod_10041889.html
 NPN transistor - https://www.hestore.hu/prod_10020924.html
@@ -31,3 +31,4 @@ Step up converter IC - https://www.hestore.hu/prod_10032041.html
 470k resistor - https://www.hestore.hu/prod_10001179.html
 Schottky diode - https://www.hestore.hu/prod_10039694.html
 2x 22R resistor - https://www.hestore.hu/prod_10001250.html
+12MHz crystal - https://www.hestore.hu/prod_10021387.html
