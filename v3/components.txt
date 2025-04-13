@@ -30,3 +30,4 @@ Step up converter IC - https://www.hestore.hu/prod_10032041.html
 1.5M resistor - https://www.hestore.hu/prod_10001251.html
 470k resistor - https://www.hestore.hu/prod_10001179.html
 Schottky diode - https://www.hestore.hu/prod_10039694.html
+2x 22R resistor - https://www.hestore.hu/prod_10001250.html
