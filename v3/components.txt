@@ -1,15 +1,16 @@
 ATMEGA328P-AU - https://www.hestore.hu/prod_10032542.html
 10k resistor - https://www.hestore.hu/prod_10040338.html
 CH340G - https://www.hestore.hu/prod_10036442.html
-2x 100nF capacitor - https://www.hestore.hu/prod_10001122.html
-Micro USB - https://www.hestore.hu/prod_10032693.html
+100nF capacitor - https://www.hestore.hu/prod_10001122.html
+3x 22R resistor - https://www.hestore.hu/prod_10001250.html
+12MHz crystal - https://www.hestore.hu/prod_10021387.html
 16MHz crystal - https://www.hestore.hu/prod_10021434.html
 4x 22pF capacitor - https://www.hestore.hu/prod_10001131.html
-6x TACT button - https://www.hestore.hu/prod_10044879.html
+Micro USB - https://www.hestore.hu/prod_10032693.html
+6x SMD button - https://www.hestore.hu/prod_10043772.html
 IR transmitter - https://www.hestore.hu/prod_10041889.html
 NPN transistor - https://www.hestore.hu/prod_10020924.html
-49.9 resistor - https://www.hestore.hu/prod_10031746.html
-330 resistor - https://www.hestore.hu/prod_10001170.html
+220 resistor - https://www.hestore.hu/prod_10001162.html
 IR receiver - https://www.hestore.hu/prod_10045411.html
 1.8" TFT screen - https://www.hestore.hu/prod_10045986.html
 Voltage regulator - https://www.hestore.hu/prod_10040193.html
@@ -17,18 +18,16 @@ Voltage regulator - https://www.hestore.hu/prod_10040193.html
 Battery protection IC - https://www.hestore.hu/prod_10046612.html
 N-channel MOSFET - https://www.hestore.hu/prod_10045032.html
 Battery charger IC - https://www.hestore.hu/prod_10037291.html
-Type-C USB - https://www.hestore.hu/prod_10046971.html
 Green led - https://www.hestore.hu/prod_10036384.html
 Red led - https://www.hestore.hu/prod_10043215.html
 2x 1k resistors - https://www.hestore.hu/prod_10031299.html
 1.2k resistor - https://www.hestore.hu/prod_10001268.html
 Battery - https://www.hestore.hu/prod_10036161.html
-Battery JST connector - https://www.hestore.hu/prod_10047452.html
+Battery JST connector - https://www.hestore.hu/prod_10038523.html
 Step up converter IC - https://www.hestore.hu/prod_10032041.html
 4.7uF capacitor - https://www.hestore.hu/prod_10033975.html
 4.7uH inductor - https://www.hestore.hu/prod_10047163.html
 1.5M resistor - https://www.hestore.hu/prod_10001251.html
 470k resistor - https://www.hestore.hu/prod_10001179.html
 Schottky diode - https://www.hestore.hu/prod_10039694.html
-2x 22R resistor - https://www.hestore.hu/prod_10001250.html
-12MHz crystal - https://www.hestore.hu/prod_10021387.html
+Power switch - https://www.hestore.hu/prod_10022003.html
