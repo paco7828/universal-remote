@@ -1,4 +1,4 @@
-#include "./UniversalRemote.h"
+#include "./UniversalRemote-inp-pullup.h"
 
 // Screen pins
 #define TFT_CS 10

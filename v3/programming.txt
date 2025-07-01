@@ -1,7 +1,0 @@
-ATMEGA328P-AU -> Arduino UNO
-16 (MISO) -> D12
-15 (MOSI) -> D11
-17 (SCK) -> D13
-29 (RESET) -> D10
-4, 6 (VCC) -> 5V
-3, 5 (GND) -> GND

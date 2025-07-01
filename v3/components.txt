@@ -13,8 +13,7 @@ NPN transistor - https://www.hestore.hu/prod_10020924.html
 220 resistor - https://www.hestore.hu/prod_10001162.html
 IR receiver - https://www.hestore.hu/prod_10045411.html
 1.8" TFT screen - https://www.hestore.hu/prod_10045986.html
-Voltage regulator - https://www.hestore.hu/prod_10040193.html
-3x 10uF capacitor - https://www.hestore.hu/prod_10032047.html
+1x 10uF capacitor - https://www.hestore.hu/prod_10032047.html
 Battery protection IC - https://www.hestore.hu/prod_10046612.html
 N-channel MOSFET - https://www.hestore.hu/prod_10045032.html
 Battery charger IC - https://www.hestore.hu/prod_10037291.html
