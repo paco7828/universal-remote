@@ -520,8 +520,8 @@ public:
     printText(2, ST7735_WHITE, 20, 50, "Length:");
     printText(2, ST7735_WHITE, 50, 70, String(signal.rawDataLen));
     tft.drawLine(0, 90, 127, 90, ST7735_WHITE);
-    createSendBtn(false);
-    createDelBtn(true);
+    createSendBtn(true);
+    createDelBtn(false);
   }
 
   IRSignal readSignalAtIndex(int index) {
