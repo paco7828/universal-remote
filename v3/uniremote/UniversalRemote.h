@@ -1,12 +1,3 @@
-/*
-1. BUTTON CONNECTIONS:
-    -A SIDE -> GPIO
-    -B SIDE -> GND
-
-2. REMOVE THE RESISTORS BETWEEN BTN AND GND
-3. CHANGE INPUT TO INPUT_PULLUP
-4. CHANGE HIGH TO LOW AND VICA VERSA
-*/
 #include <IRremote.hpp>
 #include <Adafruit_ST7735.h>
 #include <EEPROM.h>
@@ -24,13 +15,13 @@ private:
   int left_btn;
   int back_btn;
   int confirm_btn;
-  uint16_t currentRawData[250];
+  uint16_t currentRawData[200];
   uint8_t currentRawDataLen;
   static const char *const alphabet[29];
 
   struct IRSignal {
     char name[10];
-    uint16_t rawData[250];
+    uint16_t rawData[200];
     uint8_t rawDataLen;
   } __attribute__((packed));
 
@@ -58,7 +49,7 @@ private:
     cursorCol = 0;
     selectedChoice = "No";
     outputText[0] = '\0';
-    currentRawData[250] = {};
+    currentRawData[200] = {};
     currentRawDataLen = 0;
     inspectionChoice = false;
   }
