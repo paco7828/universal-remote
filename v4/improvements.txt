@@ -1,0 +1,10 @@
+Hardware:
+ - ATMEGA328P -> ESP32 C3 SUPERMINI
+ - 1.8" TFT screen -> 1.8" / 3.5" TFT touch screen
+ - Micro-USB -> USB-C charging
+ - MCP1624 -> MT3608
+
+Software:
+ - Capture and re-release signals
+ - EEPROM -> Flash
+ - Select brand, functionality (FREEZE, POWER ON/OFF/TOGGLE) => Brand specific signal release, no pre-capture needed
