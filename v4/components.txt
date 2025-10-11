@@ -1,0 +1,25 @@
+1x ESP32 C3 SUPERMINI - https://www.hestore.hu/prod_10048018.html
+3x 100nF 0805 capacitor - https://www.hestore.hu/prod_10001122.html
+1x 100uF electrolytic capacitor - https://www.hestore.hu/prod_10039018.html
+1x 2.8" TFT Touch display - https://www.hestore.hu/prod_10047949.html
+1x 100R 0805 resistor - https://www.hestore.hu/prod_10001142.html
+1x 100kR 0805 resistor - https://www.hestore.hu/prod_10001143.html
+1x AO3400A - https://www.hestore.hu/prod_10039959.html
+1x IRE940-5 - https://www.hestore.hu/prod_10041889.html
+1x 22R 1W 2512 resistor - https://www.hestore.hu/prod_10031720.html
+1x IRM3638T - https://www.hestore.hu/prod_10045411.html
+1x B2B-XH-A - https://www.hestore.hu/prod_10041549.html
+1x KCD11-2P - https://www.hestore.hu/prod_10047980.html
+1x USB-C-6 pin - https://www.hestore.hu/prod_10046971.html
+2x SS14 - https://www.hestore.hu/prod_10039694.html
+1x Red LED 0805 - https://www.hestore.hu/prod_10043215.html
+1x Green LED 0805 - https://www.hestore.hu/prod_10036384.html
+3x 1kR 0805 resistor - https://www.hestore.hu/prod_10031299.html
+2x 10uF 0805 capacitor - https://www.hestore.hu/prod_10032047.html
+1x TP4056 - https://www.hestore.hu/prod_10037291.html
+1x 1.2kR resistor - https://www.hestore.hu/prod_10001268.html
+1x DW01A - https://www.hestore.hu/prod_10046612.html
+1x 8205A - https://www.hestore.hu/prod_10045032.html
+1x MT3608 - https://www.hestore.hu/prod_10048950.html
+1x 22uH 0705 inductor - https://www.hestore.hu/prod_10046500.html
+1x 7.5kR 0805 resistor - https://www.hestore.hu/prod_10001197.html
