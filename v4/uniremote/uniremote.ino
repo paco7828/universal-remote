@@ -41,6 +41,7 @@ struct TouchButton {
   const char *label;
   void (*callback)();
   bool pressed;
+  bool isBackButton;
 };
 
 // Option structure with name and callback
@@ -99,9 +100,10 @@ void drawHeaderFooter();
 uint16_t read16(File &f);
 uint32_t read32(File &f);
 void drawBMP(const char *filename, int16_t x, int16_t y);
-void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)());
+void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)(), bool isBackButton = false);
 bool isTouchInButton(TouchButton *btn, int tx, int ty);
 void createOptions(const Option options[], int count, int x = 10, int y = 50, int btnWidth = 220, int btnHeight = 45);
+void createGridOptions(const Option options[], int count, int rows, int cols, int startX = 10, int startY = 70, int spacing = 5, int btnSize = 50);
 void backToMenu();
 
 // Signal options
@@ -338,7 +340,22 @@ void drawMenuUI() {
 // ===================================================================================
 
 void signalOptions() {
-  createOptions(SIGNAL_OPTIONS, 3, 10, 70);
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+
+  // Create 1x2 grid
+  int btnSize = 100;
+  int spacing = 10;
+  int totalWidth = (btnSize * 2) + spacing;
+  int startX = (240 - totalWidth) / 2;
+
+  createTouchBox(startX, 70, btnSize, btnSize, currentTheme.primary, currentTheme.primary, "Transmit", transmitOptions);
+  createTouchBox(startX + btnSize + spacing, 70, btnSize, btnSize, currentTheme.primary, currentTheme.primary, "Receive", receiveOptions);
+
+  // Centered "Back" button
+  createTouchBox(60, 190, 120, 45, currentTheme.secondary, currentTheme.secondary, "Back", backToMenu, true);
+
+  drawHeaderFooter();
 }
 
 void transmitOptions() {
@@ -352,7 +369,33 @@ void backToMenu() {
 }
 
 void projectorBrands() {
-  createOptions(PROJECTOR_BRANDS, 6, 10, 55, 220, 35);
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+
+  // 3x2 grid
+  int btnWidth = 115;
+  int btnHeight = 40;
+  int spacing = 5;
+  int startX = (240 - (btnWidth * 2 + spacing)) / 2;
+  int startY = 120;
+  
+  int buttonIndex = 0;
+  for (int row = 0; row < 3 && buttonIndex < 6; row++) {
+    for (int col = 0; col < 2 && buttonIndex < 6; col++) {
+      int x = startX + col * (btnWidth + spacing);
+      int y = startY + row * (btnHeight + spacing);
+      
+      bool isBack = (buttonIndex == 5 && strcmp(PROJECTOR_BRANDS[buttonIndex].name, "Back") == 0);
+
+      createTouchBox(x, y, btnWidth, btnHeight,
+                     currentTheme.primary, currentTheme.primary,
+                     PROJECTOR_BRANDS[buttonIndex].name, PROJECTOR_BRANDS[buttonIndex].callback, isBack);
+
+      buttonIndex++;
+    }
+  }
+
+  drawHeaderFooter();
 }
 
 void epsonOptions() {
@@ -457,7 +500,7 @@ void processTouchButtons(int tx, int ty) {
 }
 
 // Futuristic button with scanlines and glowing effect
-void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)()) {
+void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)(), bool isBackButton) {
   if (buttonCount >= MAX_BUTTONS) {
     Serial.println("Max buttons reached!");
     return;
@@ -468,11 +511,12 @@ void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_
   btn->y = y;
   btn->w = width;
   btn->h = height;
-  btn->color = currentTheme.primary;
-  btn->textColor = currentTheme.primary;
+  btn->color = color;
+  btn->textColor = textColor;
   btn->label = label;
   btn->callback = callback;
   btn->pressed = false;
+  btn->isBackButton = isBackButton;
 
   // Draw button in normal state
   drawButton(btn, false);
@@ -487,9 +531,14 @@ bool isTouchInButton(TouchButton *btn, int tx, int ty) {
 
 // Draw a button in normal or active state
 void drawButton(TouchButton *btn, bool active) {
+  if (btn->isBackButton) {
+    // Back button reversed logic
+    active = !active;
+  }
+  
   if (active) {
-    // Active state - filled with primary color
-    tft.fillRect(btn->x, btn->y, btn->w, btn->h, currentTheme.primary);
+    // Active state - filled with button's color
+    tft.fillRect(btn->x, btn->y, btn->w, btn->h, btn->color);
     tft.drawRect(btn->x, btn->y, btn->w, btn->h, ILI9341_WHITE);
 
     // Corner accents in white
@@ -510,26 +559,26 @@ void drawButton(TouchButton *btn, bool active) {
     tft.drawRect(btn->x - 1, btn->y - 1, btn->w + 2, btn->h + 2, currentTheme.accent);
     tft.drawRect(btn->x - 2, btn->y - 2, btn->w + 4, btn->h + 4, currentTheme.darkest);
     tft.fillRect(btn->x, btn->y, btn->w, btn->h, ILI9341_BLACK);
-    tft.drawRect(btn->x, btn->y, btn->w, btn->h, currentTheme.primary);
+    tft.drawRect(btn->x, btn->y, btn->w, btn->h, btn->color);
 
     // Corner decorations
     int cornerSize = 8;
-    tft.drawFastHLine(btn->x, btn->y, cornerSize, currentTheme.primary);
-    tft.drawFastVLine(btn->x, btn->y, cornerSize, currentTheme.primary);
-    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y, cornerSize, currentTheme.primary);
-    tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cornerSize, currentTheme.primary);
-    tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cornerSize, currentTheme.primary);
-    tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, currentTheme.primary);
-    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, currentTheme.primary);
-    tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, currentTheme.primary);
+    tft.drawFastHLine(btn->x, btn->y, cornerSize, btn->color);
+    tft.drawFastVLine(btn->x, btn->y, cornerSize, btn->color);
+    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y, cornerSize, btn->color);
+    tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cornerSize, btn->color);
+    tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cornerSize, btn->color);
+    tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, btn->color);
+    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, btn->color);
+    tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, btn->color);
 
     // Add scanline effect
     for (int j = 2; j < btn->h - 2; j += 5) {
       tft.drawFastHLine(btn->x + 2, btn->y + j, btn->w - 4, currentTheme.darkest);
     }
 
-    // Text in primary color
-    tft.setTextColor(currentTheme.primary);
+    // Text in button's color
+    tft.setTextColor(btn->color);
   }
 
   // Draw centered text
@@ -541,17 +590,42 @@ void drawButton(TouchButton *btn, bool active) {
   tft.print(btn->label);
 }
 
-// Create options using an array
+// Create options using an array (vertical list)
 void createOptions(const Option options[], int count, int x, int y, int btnWidth, int btnHeight) {
   buttonCount = 0;
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
 
   for (int i = 0; i < count; i++) {
-    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight, currentTheme.primary, currentTheme.primary, options[i].name, options[i].callback);
+    // Check if this is the last option and it's named "Back"
+    bool isBack = (i == count - 1 && strcmp(options[i].name, "Back") == 0);
+    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight, 
+                   currentTheme.primary, currentTheme.primary, 
+                   options[i].name, options[i].callback, isBack);
   }
 
   // Redraw footer
   drawHeaderFooter();
+}
+
+// Create options in a grid layout (rows x cols)
+void createGridOptions(const Option options[], int count, int rows, int cols, int startX, int startY, int spacing, int btnSize) {
+  // Create buttons in grid
+  int buttonIndex = 0;
+  for (int row = 0; row < rows && buttonIndex < count; row++) {
+    for (int col = 0; col < cols && buttonIndex < count; col++) {
+      int x = startX + col * (btnSize + spacing);
+      int y = startY + row * (btnSize + spacing);
+      
+      // Check if this is the last option and it's named "Back"
+      bool isBack = (buttonIndex == count - 1 && strcmp(options[buttonIndex].name, "Back") == 0);
+
+      createTouchBox(x, y, btnSize, btnSize,
+                     currentTheme.primary, currentTheme.primary,
+                     options[buttonIndex].name, options[buttonIndex].callback, isBack);
+
+      buttonIndex++;
+    }
+  }
 }
 
 // ===================================================================================
