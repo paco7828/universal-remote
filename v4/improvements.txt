@@ -8,3 +8,67 @@ Software:
  - Capture and re-release signals
  - EEPROM -> Flash
  - Select brand, functionality (FREEZE, POWER ON/OFF/TOGGLE) => Brand specific signal release, no pre-capture needed
+ - Menu options:
+     - Signal options:
+         - Transmit:
+             - Saved signals
+             - Favorite:
+                 - Shows favorite signals
+             - Up arrow (shows i-1 n of signals)
+             - Down arrow (shows i+1 n of signals)
+             - Back (Back to signal options)
+         - Receive:
+             - Listening ... > Signal captured:
+                 - Captured signal!
+                 - Length
+                 - Frequency
+                 - Waveform
+                 - Save:
+                     - Keyboard appears (same logic as before but with touch) > Signal saved! > Back to menu
+                 - Cancel (Back to signal options)
+             - Back (Back to signal options)
+         - Back (Back to menu)
+     - Projector brands:
+         - Epson:
+             - FREEZE
+             - POWER OFF
+             - POWER ON
+             - POWER TOGGLE
+         - Acer:
+             - FREEZE
+             - POWER OFF
+             - POWER ON
+             - POWER TOGGLE
+         - BENQ:
+             - FREEZE
+             - POWER OFF
+             - POWER ON
+             - POWER TOGGLE
+         - NEC:
+             - FREEZE
+             - POWER OFF
+             - POWER ON
+             - POWER TOGGLE
+         - PANASONIC:
+             - FREEZE
+             - POWER OFF
+             - POWER ON
+             - POWER TOGGLE
+         - Back (Back to menu)
+    
+     - SD card:
+         - Info:
+             - Storage size in GB (if less than 1 GB => MB)
+             - Free storage in GB (if less than 1 GB => MB)
+             - Used storage in GB (if less than 1 GB => MB)
+             - N of images (./images)
+             - N of saved signals (./saved-signals)
+             - N of built-in signals (./built-in-signals)
+             - Back (Back to SD card)
+         - Files:
+             - Show folder & file structure (Folders, file-names and their sizes, only images can be opened)
+             - Back (Back  to SD card)
+         - Format:
+             - Everything will be deleted except built-in signals
+             - Confirm? Yes, format > Back to menu | No, I changed my mind > Back to menu
+         - Back (Back  to menu)
