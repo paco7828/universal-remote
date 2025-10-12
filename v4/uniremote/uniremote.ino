@@ -31,15 +31,6 @@
 #define TS_MAXX 3850
 #define TS_MAXY 3750
 
-// Color palette - Red/Black theme
-#define COLOR_BLACK 0x0000
-#define COLOR_DARKGREY 0x2104
-#define COLOR_GREY 0x4208
-#define COLOR_RED 0xF800
-#define COLOR_DARKRED 0x8800
-#define COLOR_CRIMSON 0xD000
-#define COLOR_WHITE 0xFFFF
-
 // Initialize display & touch & SD
 SPIClass spi(FSPI);
 Adafruit_ILI9341 tft = Adafruit_ILI9341(&spi, TFT_DC, TFT_CS, TFT_RST);
@@ -66,10 +57,52 @@ struct Option {
   void (*callback)();
 };
 
+// Theme color sets
+struct ThemeColors {
+  uint16_t primary;
+  uint16_t secondary;
+  uint16_t accent;
+  uint16_t dark;
+  uint16_t darkest;
+};
+
+// Global current theme colors
+ThemeColors currentTheme;
+
+// Define theme presets
+const ThemeColors THEME_FUTURISTIC_RED = {
+  0xF800,  // Red
+  0xD000,  // Crimson
+  0x8800,  // Dark Red
+  0x4208,  // Grey
+  0x2104   // Dark Grey
+};
+
+const ThemeColors THEME_FUTURISTIC_GREEN = {
+  0x07E0,  // Green
+  0x05C0,  // Dark Green
+  0x0400,  // Darker Green
+  0x4208,  // Grey
+  0x2104   // Dark Grey
+};
+
+const ThemeColors THEME_FUTURISTIC_PURPLE = {
+  0xF81F,  // Magenta/Purple
+  0xC81F,  // Dark Purple
+  0x8010,  // Darker Purple
+  0x4208,  // Grey
+  0x2104   // Dark Grey
+};
+
+// Default theme
+#define DEFAULT_THEME THEME_FUTURISTIC_RED
+
 // Functions
 // Display helper
 void initDisplay();
 void processTouchButtons(int tx, int ty);
+void drawButton(TouchButton *btn, bool active);
+void drawHeaderFooter();
 uint16_t read16(File &f);
 uint32_t read32(File &f);
 void drawBMP(const char *filename, int16_t x, int16_t y);
@@ -97,11 +130,20 @@ void sdInfoOptions();
 void listSDFiles();
 void sdFormatOptions();
 
+// Theme
+void themeOptions();
+void setTheme(uint8_t themeIndex);
+void drawMenuUI();
+void setThemeFuturisticRed();
+void setThemeFuturisticGreen();
+void setThemeFuturisticPurple();
+
 // Menu options (first glance)
 const Option MENU_OPTIONS[] = {
   { "Signal options", signalOptions },
   { "Projector brands", projectorBrands },
-  { "SD Card options", sdData }
+  { "SD Card options", sdData },
+  { "Change theme", themeOptions }
 };
 
 // Signal options
@@ -126,6 +168,14 @@ const Option SD_CARD_OPTIONS[] = {
   { "Info", sdInfoOptions },
   { "Files", listSDFiles },
   { "Format", sdFormatOptions },
+  { "Back", backToMenu }
+};
+
+// Theme
+const Option THEME_OPTIONS[] = {
+  { "Futuristic Red", setThemeFuturisticRed },
+  { "Futuristic Green", setThemeFuturisticGreen },
+  { "Futuristic Purple", setThemeFuturisticPurple },
   { "Back", backToMenu }
 };
 
@@ -154,33 +204,7 @@ void loop() {
     for (int i = 0; i < buttonCount; i++) {
       if (buttons[i].pressed) {
         buttons[i].pressed = false;
-        TouchButton *btn = &buttons[i];
-
-        tft.drawRect(btn->x - 1, btn->y - 1, btn->w + 2, btn->h + 2, COLOR_DARKRED);
-        tft.drawRect(btn->x - 2, btn->y - 2, btn->w + 4, btn->h + 4, COLOR_DARKGREY);
-        tft.fillRect(btn->x, btn->y, btn->w, btn->h, COLOR_BLACK);
-        tft.drawRect(btn->x, btn->y, btn->w, btn->h, COLOR_RED);
-
-        int cornerSize = 8;
-        tft.drawFastHLine(btn->x, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
-        tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
-
-        for (int j = 2; j < btn->h - 2; j += 3) {
-          tft.drawFastHLine(btn->x + 2, btn->y + j, btn->w - 4, COLOR_DARKGREY);
-        }
-
-        tft.setTextSize(2);
-        int16_t x1, y1;
-        uint16_t w1, h1;
-        tft.getTextBounds(btn->label, 0, 0, &x1, &y1, &w1, &h1);
-        tft.setCursor(btn->x + (btn->w - w1) / 2, btn->y + (btn->h - h1) / 2);
-        tft.print(btn->label);
+        drawButton(&buttons[i], false);
       }
     }
   }
@@ -190,6 +214,9 @@ void loop() {
 
 void initDisplay() {
   Serial.begin(115200);
+
+  // Set theme
+  currentTheme = DEFAULT_THEME;
 
   // IR Tx & Rx
   IrSender.begin(IR_TX);
@@ -206,7 +233,6 @@ void initDisplay() {
   // Display
   tft.begin(27000000);
   tft.setRotation(2);
-  tft.fillScreen(ILI9341_BLACK);
 
   // SD
   digitalWrite(TFT_CS, HIGH);
@@ -220,26 +246,8 @@ void initDisplay() {
   digitalWrite(SD_CS, HIGH);
   delay(10);
 
-  // Header border
-  tft.drawFastHLine(0, 0, 240, COLOR_RED);
-  tft.drawFastHLine(0, 1, 240, COLOR_RED);
-
-  // Top corner accents
-  for (int i = 0; i < 15; i++) {
-    tft.drawPixel(i, 2 + i / 3, COLOR_RED);
-    tft.drawPixel(239 - i, 2 + i / 3, COLOR_RED);
-  }
-
-  // Main title
-  tft.setTextColor(COLOR_RED);
-  tft.setTextSize(3);
-  tft.setCursor(45, 10);
-  tft.println("UNIVERSAL");
-  tft.setCursor(70, 40);
-  tft.println("REMOTE");
-
-  // Create menu options
-  createOptions(MENU_OPTIONS, 3, 10, 70);
+  // Draw UI and menu
+  drawMenuUI();
 
   // Touch
   Serial.println("Initializing touch...");
@@ -247,28 +255,101 @@ void initDisplay() {
     Serial.println("Touch FAILED!");
   }
   touch.setRotation(2);
+}
+
+// Draw header and footer decorations
+void drawHeaderFooter() {
+  // Header border
+  tft.drawFastHLine(0, 0, 240, currentTheme.primary);
+  tft.drawFastHLine(0, 1, 240, currentTheme.primary);
+
+  // Top corner accents
+  for (int i = 0; i < 15; i++) {
+    tft.drawPixel(i, 2 + i / 3, currentTheme.primary);
+    tft.drawPixel(239 - i, 2 + i / 3, currentTheme.primary);
+  }
 
   // Footer border
-  tft.drawFastHLine(0, 318, 240, COLOR_RED);
-  tft.drawFastHLine(0, 319, 240, COLOR_RED);
+  tft.drawFastHLine(0, 318, 240, currentTheme.primary);
+  tft.drawFastHLine(0, 319, 240, currentTheme.primary);
 
   // Bottom corner accents
   for (int i = 0; i < 15; i++) {
-    tft.drawPixel(i, 317 - i / 3, COLOR_RED);
-    tft.drawPixel(239 - i, 317 - i / 3, COLOR_RED);
+    tft.drawPixel(i, 317 - i / 3, currentTheme.primary);
+    tft.drawPixel(239 - i, 317 - i / 3, currentTheme.primary);
   }
+}
+
+// Draw a button in normal or active state
+void drawButton(TouchButton *btn, bool active) {
+  if (active) {
+    // Active state - filled with primary color
+    tft.fillRect(btn->x, btn->y, btn->w, btn->h, currentTheme.primary);
+    tft.drawRect(btn->x, btn->y, btn->w, btn->h, ILI9341_WHITE);
+
+    // Corner accents in white
+    int cornerSize = 8;
+    tft.drawFastHLine(btn->x, btn->y, cornerSize, ILI9341_WHITE);
+    tft.drawFastVLine(btn->x, btn->y, cornerSize, ILI9341_WHITE);
+    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y, cornerSize, ILI9341_WHITE);
+    tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cornerSize, ILI9341_WHITE);
+    tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cornerSize, ILI9341_WHITE);
+    tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, ILI9341_WHITE);
+    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, ILI9341_WHITE);
+    tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, ILI9341_WHITE);
+
+    // Text in black
+    tft.setTextColor(ILI9341_BLACK);
+  } else {
+    // Normal state - outlined
+    tft.drawRect(btn->x - 1, btn->y - 1, btn->w + 2, btn->h + 2, currentTheme.accent);
+    tft.drawRect(btn->x - 2, btn->y - 2, btn->w + 4, btn->h + 4, currentTheme.darkest);
+    tft.fillRect(btn->x, btn->y, btn->w, btn->h, ILI9341_BLACK);
+    tft.drawRect(btn->x, btn->y, btn->w, btn->h, currentTheme.primary);
+
+    // Corner decorations
+    int cornerSize = 8;
+    tft.drawFastHLine(btn->x, btn->y, cornerSize, currentTheme.primary);
+    tft.drawFastVLine(btn->x, btn->y, cornerSize, currentTheme.primary);
+    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y, cornerSize, currentTheme.primary);
+    tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cornerSize, currentTheme.primary);
+    tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cornerSize, currentTheme.primary);
+    tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, currentTheme.primary);
+    tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, currentTheme.primary);
+    tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, currentTheme.primary);
+
+    // Add scanline effect
+    for (int j = 2; j < btn->h - 2; j += 5) {
+      tft.drawFastHLine(btn->x + 2, btn->y + j, btn->w - 4, currentTheme.darkest);
+    }
+
+    // Text in primary color
+    tft.setTextColor(currentTheme.primary);
+  }
+
+  // Draw centered text
+  tft.setTextSize(2);
+  int16_t x1, y1;
+  uint16_t w1, h1;
+  tft.getTextBounds(btn->label, 0, 0, &x1, &y1, &w1, &h1);
+  tft.setCursor(btn->x + (btn->w - w1) / 2, btn->y + (btn->h - h1) / 2);
+  tft.print(btn->label);
 }
 
 void createOptions(const Option options[], int count, int x, int y, int btnWidth, int btnHeight) {
   buttonCount = 0;
-  tft.fillRect(0, 60, 240, 260, COLOR_BLACK);
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+
   for (int i = 0; i < count; i++) {
-    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight, COLOR_RED, COLOR_RED, options[i].name, options[i].callback);
+    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight, currentTheme.primary, currentTheme.primary, options[i].name, options[i].callback);
   }
+
+  // Redraw footer
+  drawHeaderFooter();
 }
 
 void signalOptions() {
-  createOptions(SIGNAL_OPTIONS, 3);
+  createOptions(SIGNAL_OPTIONS, 3, 10, 70);
 }
 
 void transmitOptions() {
@@ -278,11 +359,11 @@ void receiveOptions() {
 }
 
 void backToMenu() {
-  createOptions(MENU_OPTIONS, 3);
+  createOptions(MENU_OPTIONS, 4, 10, 70);
 }
 
 void projectorBrands() {
-  createOptions(PROJECTOR_BRANDS, 6, 10, 35, 220, 35);
+  createOptions(PROJECTOR_BRANDS, 6, 10, 55, 220, 35);
 }
 
 void epsonOptions() {
@@ -301,7 +382,7 @@ void panasonicOptions() {
 }
 
 void sdData() {
-  createOptions(SD_CARD_OPTIONS, 4);
+  createOptions(SD_CARD_OPTIONS, 4, 10, 70);
 }
 
 void sdInfoOptions() {
@@ -313,6 +394,68 @@ void listSDFiles() {
 void sdFormatOptions() {
 }
 
+void themeOptions() {
+  createOptions(THEME_OPTIONS, 4, 10, 70);
+}
+
+// Theme callback functions
+void setThemeFuturisticRed() {
+  setTheme(0);
+}
+
+void setThemeFuturisticGreen() {
+  setTheme(1);
+}
+
+void setThemeFuturisticPurple() {
+  setTheme(2);
+}
+
+// Main setTheme function
+void setTheme(uint8_t themeIndex) {
+  Serial.print("Setting theme to: ");
+  Serial.println(themeIndex);
+
+  // Update current theme colors
+  switch (themeIndex) {
+    case 0:
+      currentTheme = THEME_FUTURISTIC_RED;
+      break;
+    case 1:
+      currentTheme = THEME_FUTURISTIC_GREEN;
+      break;
+    case 2:
+      currentTheme = THEME_FUTURISTIC_PURPLE;
+      break;
+    default:
+      currentTheme = THEME_FUTURISTIC_RED;
+      break;
+  }
+
+  // Redraw the entire UI with new theme
+  drawMenuUI();
+}
+
+// Redraw the entire UI with current theme
+void drawMenuUI() {
+  // Clear screen
+  tft.fillScreen(ILI9341_BLACK);
+
+  // Draw header and footer
+  drawHeaderFooter();
+
+  // Main title
+  tft.setTextColor(currentTheme.primary);
+  tft.setTextSize(3);
+  tft.setCursor(45, 10);
+  tft.println("UNIVERSAL");
+  tft.setCursor(70, 40);
+  tft.println("REMOTE");
+
+  // Return to main menu
+  backToMenu();
+}
+
 // Process touch for all buttons with futuristic feedback
 void processTouchButtons(int tx, int ty) {
   for (int i = 0; i < buttonCount; i++) {
@@ -321,30 +464,7 @@ void processTouchButtons(int tx, int ty) {
     if (isTouchInButton(btn, tx, ty)) {
       if (!btn->pressed) {
         btn->pressed = true;
-
-        // Active state
-        tft.fillRect(btn->x, btn->y, btn->w, btn->h, COLOR_RED);
-        tft.drawRect(btn->x, btn->y, btn->w, btn->h, COLOR_WHITE);
-
-        // Corner accents in white
-        int cornerSize = 8;
-        tft.drawFastHLine(btn->x, btn->y, cornerSize, COLOR_WHITE);
-        tft.drawFastVLine(btn->x, btn->y, cornerSize, COLOR_WHITE);
-        tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y, cornerSize, COLOR_WHITE);
-        tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cornerSize, COLOR_WHITE);
-        tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cornerSize, COLOR_WHITE);
-        tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, COLOR_WHITE);
-        tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, COLOR_WHITE);
-        tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, COLOR_WHITE);
-
-        // Text in black
-        tft.setTextColor(COLOR_BLACK);
-        tft.setTextSize(2);
-        int16_t x1, y1;
-        uint16_t w1, h1;
-        tft.getTextBounds(btn->label, 0, 0, &x1, &y1, &w1, &h1);
-        tft.setCursor(btn->x + (btn->w - w1) / 2, btn->y + (btn->h - h1) / 2);
-        tft.print(btn->label);
+        drawButton(btn, true);
 
         // Call the callback function
         if (btn->callback != NULL) {
@@ -354,34 +474,7 @@ void processTouchButtons(int tx, int ty) {
     } else {
       if (btn->pressed) {
         btn->pressed = false;
-
-        // Redraw in normal state
-        tft.drawRect(btn->x - 1, btn->y - 1, btn->w + 2, btn->h + 2, COLOR_DARKRED);
-        tft.drawRect(btn->x - 2, btn->y - 2, btn->w + 4, btn->h + 4, COLOR_DARKGREY);
-        tft.fillRect(btn->x, btn->y, btn->w, btn->h, COLOR_BLACK);
-        tft.drawRect(btn->x, btn->y, btn->w, btn->h, COLOR_RED);
-
-        int cornerSize = 8;
-        tft.drawFastHLine(btn->x, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cornerSize, COLOR_RED);
-        tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
-        tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, COLOR_RED);
-        tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
-
-        for (int j = 2; j < btn->h - 2; j += 3) {
-          tft.drawFastHLine(btn->x + 2, btn->y + j, btn->w - 4, COLOR_DARKGREY);
-        }
-
-        tft.setTextColor(COLOR_RED);
-        tft.setTextSize(2);
-        int16_t x1, y1;
-        uint16_t w1, h1;
-        tft.getTextBounds(btn->label, 0, 0, &x1, &y1, &w1, &h1);
-        tft.setCursor(btn->x + (btn->w - w1) / 2, btn->y + (btn->h - h1) / 2);
-        tft.print(btn->label);
+        drawButton(btn, false);
       }
     }
   }
@@ -518,51 +611,14 @@ void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_
   btn->y = y;
   btn->w = width;
   btn->h = height;
-  btn->color = color;
-  btn->textColor = textColor;
+  btn->color = currentTheme.primary;
+  btn->textColor = currentTheme.primary;
   btn->label = label;
   btn->callback = callback;
   btn->pressed = false;
 
-  // Draw outer glow
-  tft.drawRect(x - 1, y - 1, width + 2, height + 2, COLOR_DARKRED);
-  tft.drawRect(x - 2, y - 2, width + 4, height + 4, COLOR_DARKGREY);
-
-  // Main button background
-  tft.fillRect(x, y, width, height, COLOR_BLACK);
-
-  // Red border with corner accents
-  tft.drawRect(x, y, width, height, COLOR_RED);
-
-  // Corner decorations
-  int cornerSize = 8;
-  // Top-left
-  tft.drawFastHLine(x, y, cornerSize, COLOR_RED);
-  tft.drawFastVLine(x, y, cornerSize, COLOR_RED);
-  // Top-right
-  tft.drawFastHLine(x + width - cornerSize, y, cornerSize, COLOR_RED);
-  tft.drawFastVLine(x + width - 1, y, cornerSize, COLOR_RED);
-  // Bottom-left
-  tft.drawFastHLine(x, y + height - 1, cornerSize, COLOR_RED);
-  tft.drawFastVLine(x, y + height - cornerSize, cornerSize, COLOR_RED);
-  // Bottom-right
-  tft.drawFastHLine(x + width - cornerSize, y + height - 1, cornerSize, COLOR_RED);
-  tft.drawFastVLine(x + width - 1, y + height - cornerSize, cornerSize, COLOR_RED);
-
-  // Add scanline effect
-  for (int i = 2; i < height - 2; i += 3) {
-    tft.drawFastHLine(x + 2, y + i, width - 4, COLOR_DARKGREY);
-  }
-
-  // Draw centered text
-  tft.setTextColor(COLOR_RED);
-  tft.setTextSize(2);
-
-  int16_t x1, y1;
-  uint16_t w1, h1;
-  tft.getTextBounds(label, 0, 0, &x1, &y1, &w1, &h1);
-  tft.setCursor(x + (width - w1) / 2, y + (height - h1) / 2);
-  tft.print(label);
+  // Draw button in normal state
+  drawButton(btn, false);
 
   buttonCount++;
 }
