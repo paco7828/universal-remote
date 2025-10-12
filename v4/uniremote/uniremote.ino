@@ -124,7 +124,7 @@ void panasonicOptions();
 
 // SD Card
 void sdData();
-void sdInfoOptions();
+void listSDInfo();
 void listSDFiles();
 void sdFormatOptions();
 
@@ -178,7 +178,7 @@ const Option PROJECTOR_BRANDS[] = {
 
 // SD Card
 const Option SD_CARD_OPTIONS[] = {
-  { "Info", sdInfoOptions },
+  { "Info", listSDInfo },
   { "Files", listSDFiles },
   { "Format", sdFormatOptions },
   { "Back", backToMenu }
@@ -373,7 +373,7 @@ void signalOptions() {
 }
 
 void transmitOptions() {
-  createOptions(TRANSMIT_OPTIONS, 3);
+  createOptions(TRANSMIT_OPTIONS, 3, 10, 100);
 }
 
 void listSavedSignals(){
@@ -389,7 +389,7 @@ void startSignalListen(){
 }
 
 void receiveOptions() {
-  createOptions(RECEIVE_OPTIONS, 2);
+  createOptions(RECEIVE_OPTIONS, 2, 10, 120);
 }
 
 void backToMenu() {
@@ -445,8 +445,25 @@ void sdData() {
   createOptions(SD_CARD_OPTIONS, 4, 10, 70);
 }
 
-void sdInfoOptions() {
-}
+void listSDInfo() {
+  /* Fix needed
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(currentTheme.primary);
+  tft.setCursor(10, 60);
+  tft.println("Storage size:");
+  tft.setCursor(10, 70);
+  tft.println("Free storage:");
+  tft.setCursor(10, 80);
+  tft.println("Used storage:");
+  tft.setCursor(10, 90);
+  tft.println("Saved signals:");
+  tft.setCursor(10, 100);
+  tft.println("Built-in signals:");
+  tft.setCursor(10, 110);
+  tft.println("Images: ");
+  */
+  }
 
 void listSDFiles() {
 }
