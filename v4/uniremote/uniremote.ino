@@ -220,12 +220,11 @@ void initDisplay() {
   digitalWrite(SD_CS, HIGH);
   delay(10);
 
-  // Futuristic header design
-  // Top border
+  // Header border
   tft.drawFastHLine(0, 0, 240, COLOR_RED);
   tft.drawFastHLine(0, 1, 240, COLOR_RED);
 
-  // Corner accents
+  // Top corner accents
   for (int i = 0; i < 15; i++) {
     tft.drawPixel(i, 2 + i / 3, COLOR_RED);
     tft.drawPixel(239 - i, 2 + i / 3, COLOR_RED);
@@ -234,18 +233,13 @@ void initDisplay() {
   // Main title
   tft.setTextColor(COLOR_RED);
   tft.setTextSize(3);
-  tft.setCursor(40, 10);
-  tft.println("PROJECTOR");
-
-  // Subtitle with lines
-  tft.drawFastHLine(15, 38, 210, COLOR_DARKRED);
-  tft.setTextSize(1);
-  tft.setCursor(75, 42);
-  tft.println("REMOTE CONTROL");
-  tft.drawFastHLine(15, 52, 210, COLOR_DARKRED);
+  tft.setCursor(45, 10);
+  tft.println("UNIVERSAL");
+  tft.setCursor(70, 40);
+  tft.println("REMOTE");
 
   // Create menu options
-  createOptions(MENU_OPTIONS, 3);
+  createOptions(MENU_OPTIONS, 3, 10, 70);
 
   // Touch
   Serial.println("Initializing touch...");
@@ -253,6 +247,16 @@ void initDisplay() {
     Serial.println("Touch FAILED!");
   }
   touch.setRotation(2);
+
+  // Footer border
+  tft.drawFastHLine(0, 318, 240, COLOR_RED);
+  tft.drawFastHLine(0, 319, 240, COLOR_RED);
+
+  // Bottom corner accents
+  for (int i = 0; i < 15; i++) {
+    tft.drawPixel(i, 317 - i / 3, COLOR_RED);
+    tft.drawPixel(239 - i, 317 - i / 3, COLOR_RED);
+  }
 }
 
 void createOptions(const Option options[], int count, int x, int y, int btnWidth, int btnHeight) {
