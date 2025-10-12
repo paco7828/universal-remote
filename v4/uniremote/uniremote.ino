@@ -32,18 +32,13 @@
 #define TS_MAXY 3750
 
 // Color palette - Red/Black theme
-#define COLOR_BLACK      0x0000
-#define COLOR_DARKGREY   0x2104
-#define COLOR_GREY       0x4208
-#define COLOR_RED        0xF800
-#define COLOR_DARKRED    0x8800
-#define COLOR_CRIMSON    0xD000
-#define COLOR_WHITE      0xFFFF
-
-// Helper variables
-#define MAX_BUTTONS 10
-TouchButton buttons[MAX_BUTTONS];
-int buttonCount = 0;
+#define COLOR_BLACK 0x0000
+#define COLOR_DARKGREY 0x2104
+#define COLOR_GREY 0x4208
+#define COLOR_RED 0xF800
+#define COLOR_DARKRED 0x8800
+#define COLOR_CRIMSON 0xD000
+#define COLOR_WHITE 0xFFFF
 
 // Initialize display & touch & SD
 SPIClass spi(FSPI);
@@ -60,42 +55,15 @@ struct TouchButton {
   bool pressed;
 };
 
+// Helper variables
+#define MAX_BUTTONS 10
+TouchButton buttons[MAX_BUTTONS];
+int buttonCount = 0;
+
 // Option structure with name and callback
 struct Option {
   const char *name;
   void (*callback)();
-};
-
-// Menu options (first glance)
-const Option MENU_OPTIONS[] = {
-  { "Signal options", signalOptions },
-  { "Projector brands", projectorBrands },
-  { "SD Card options", sdData }
-};
-
-// Signal options
-const Option SIGNAL_OPTIONS[] = {
-  {"Transmit", transmitOptions},
-  {"Receive", receiveOptions},
-  {"Back", backToMenu}
-};
-
-// Projector brands
-const Option PROJECTOR_BRANDS[] = {
-  {"EPSON", epsonOptions},
-  {"ACER", acerOptions},
-  {"BENQ", benqOptions},
-  {"NEC", necOptions},
-  {"PANASONIC", panasonicOptions},
-  {"Back", backToMenu}
-}
-
-// SD Card
-const option SD_CARD_OPTIONS[] = {
-  {"Info", sdInfoOptions},
-  {"Files", listSDFiles},
-  {"Format", sdFormatOptions},
-  {"Back", backToMenu}
 };
 
 // Functions
@@ -103,11 +71,11 @@ const option SD_CARD_OPTIONS[] = {
 void initDisplay();
 void processTouchButtons(int tx, int ty);
 uint16_t read16(File &f);
-uint16_t read32(File &f);
+uint32_t read32(File &f);
 void drawBMP(const char *filename, int16_t x, int16_t y);
 void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)());
 bool isTouchInButton(TouchButton *btn, int tx, int ty);
-void createOptions(Option options[]);
+void createOptions(const Option options[], int count, int x = 10, int y = 50, int btnWidth = 220, int btnHeight = 45);
 void backToMenu();
 
 // Signal options
@@ -129,8 +97,40 @@ void sdInfoOptions();
 void listSDFiles();
 void sdFormatOptions();
 
+// Menu options (first glance)
+const Option MENU_OPTIONS[] = {
+  { "Signal options", signalOptions },
+  { "Projector brands", projectorBrands },
+  { "SD Card options", sdData }
+};
+
+// Signal options
+const Option SIGNAL_OPTIONS[] = {
+  { "Transmit", transmitOptions },
+  { "Receive", receiveOptions },
+  { "Back", backToMenu }
+};
+
+// Projector brands
+const Option PROJECTOR_BRANDS[] = {
+  { "EPSON", epsonOptions },
+  { "ACER", acerOptions },
+  { "BENQ", benqOptions },
+  { "NEC", necOptions },
+  { "PANASONIC", panasonicOptions },
+  { "Back", backToMenu }
+};
+
+// SD Card
+const Option SD_CARD_OPTIONS[] = {
+  { "Info", sdInfoOptions },
+  { "Files", listSDFiles },
+  { "Format", sdFormatOptions },
+  { "Back", backToMenu }
+};
+
 void setup() {
- initDisplay();
+  initDisplay();
 }
 
 void loop() {
@@ -155,13 +155,12 @@ void loop() {
       if (buttons[i].pressed) {
         buttons[i].pressed = false;
         TouchButton *btn = &buttons[i];
-        TouchButton *btn = &buttons[i];
-        
+
         tft.drawRect(btn->x - 1, btn->y - 1, btn->w + 2, btn->h + 2, COLOR_DARKRED);
         tft.drawRect(btn->x - 2, btn->y - 2, btn->w + 4, btn->h + 4, COLOR_DARKGREY);
         tft.fillRect(btn->x, btn->y, btn->w, btn->h, COLOR_BLACK);
         tft.drawRect(btn->x, btn->y, btn->w, btn->h, COLOR_RED);
-        
+
         int cornerSize = 8;
         tft.drawFastHLine(btn->x, btn->y, cornerSize, COLOR_RED);
         tft.drawFastVLine(btn->x, btn->y, cornerSize, COLOR_RED);
@@ -171,11 +170,11 @@ void loop() {
         tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
         tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, COLOR_RED);
         tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
-        
+
         for (int j = 2; j < btn->h - 2; j += 3) {
           tft.drawFastHLine(btn->x + 2, btn->y + j, btn->w - 4, COLOR_DARKGREY);
         }
-        
+
         tft.setTextSize(2);
         int16_t x1, y1;
         uint16_t w1, h1;
@@ -189,8 +188,8 @@ void loop() {
   delay(10);
 }
 
-void initDisplay(){
-   Serial.begin(115200);
+void initDisplay() {
+  Serial.begin(115200);
 
   // IR Tx & Rx
   IrSender.begin(IR_TX);
@@ -225,19 +224,19 @@ void initDisplay(){
   // Top border
   tft.drawFastHLine(0, 0, 240, COLOR_RED);
   tft.drawFastHLine(0, 1, 240, COLOR_RED);
-  
+
   // Corner accents
   for (int i = 0; i < 15; i++) {
-    tft.drawPixel(i, 2 + i/3, COLOR_RED);
-    tft.drawPixel(239 - i, 2 + i/3, COLOR_RED);
+    tft.drawPixel(i, 2 + i / 3, COLOR_RED);
+    tft.drawPixel(239 - i, 2 + i / 3, COLOR_RED);
   }
-  
+
   // Main title
   tft.setTextColor(COLOR_RED);
   tft.setTextSize(3);
   tft.setCursor(40, 10);
   tft.println("PROJECTOR");
-  
+
   // Subtitle with lines
   tft.drawFastHLine(15, 38, 210, COLOR_DARKRED);
   tft.setTextSize(1);
@@ -246,7 +245,7 @@ void initDisplay(){
   tft.drawFastHLine(15, 52, 210, COLOR_DARKRED);
 
   // Create menu options
-  createOptions(MENU_OPTIONS);
+  createOptions(MENU_OPTIONS, 3);
 
   // Touch
   Serial.println("Initializing touch...");
@@ -256,67 +255,58 @@ void initDisplay(){
   touch.setRotation(2);
 }
 
-void createOptions(Option options[]){
-  // Create futuristic buttons
-  for (int i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
-    createTouchBox(10, 65 + (50 * i), 220, 45, COLOR_RED, COLOR_RED, options[i].name, options[i].callback);
+void createOptions(const Option options[], int count, int x, int y, int btnWidth, int btnHeight) {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 260, COLOR_BLACK);
+  for (int i = 0; i < count; i++) {
+    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight, COLOR_RED, COLOR_RED, options[i].name, options[i].callback);
   }
 }
 
-void signalOptions(){
-  createOptions(SIGNAL_OPTIONS);
+void signalOptions() {
+  createOptions(SIGNAL_OPTIONS, 3);
 }
 
-void transmitOptions(){
-
+void transmitOptions() {
 }
 
-void receiveOptions(){
-
+void receiveOptions() {
 }
 
-void backToMenu(){
-  createOptions(MENU_OPTIONS);
+void backToMenu() {
+  createOptions(MENU_OPTIONS, 3);
 }
 
-void projectorBrands(){
-  createOptions(PROJECTOR_BRANDS);
+void projectorBrands() {
+  createOptions(PROJECTOR_BRANDS, 6, 10, 35, 220, 35);
 }
 
-void epsonOptions(){
-
+void epsonOptions() {
 }
 
-void acerOptions(){
-
+void acerOptions() {
 }
 
-void benqOptions(){
-
+void benqOptions() {
 }
 
-void necOptions(){
-
+void necOptions() {
 }
 
-void panasonicOptions(){
-
+void panasonicOptions() {
 }
 
-void sdData(){
-  createOptions(SD_CARD_OPTIONS);
+void sdData() {
+  createOptions(SD_CARD_OPTIONS, 4);
 }
 
-void sdInfoOptions(){
-
+void sdInfoOptions() {
 }
 
-void listSDFiles(){
-
+void listSDFiles() {
 }
 
-void sdFormatOptions(){
-
+void sdFormatOptions() {
 }
 
 // Process touch for all buttons with futuristic feedback
@@ -331,7 +321,7 @@ void processTouchButtons(int tx, int ty) {
         // Active state
         tft.fillRect(btn->x, btn->y, btn->w, btn->h, COLOR_RED);
         tft.drawRect(btn->x, btn->y, btn->w, btn->h, COLOR_WHITE);
-        
+
         // Corner accents in white
         int cornerSize = 8;
         tft.drawFastHLine(btn->x, btn->y, cornerSize, COLOR_WHITE);
@@ -360,13 +350,13 @@ void processTouchButtons(int tx, int ty) {
     } else {
       if (btn->pressed) {
         btn->pressed = false;
-        
+
         // Redraw in normal state
         tft.drawRect(btn->x - 1, btn->y - 1, btn->w + 2, btn->h + 2, COLOR_DARKRED);
         tft.drawRect(btn->x - 2, btn->y - 2, btn->w + 4, btn->h + 4, COLOR_DARKGREY);
         tft.fillRect(btn->x, btn->y, btn->w, btn->h, COLOR_BLACK);
         tft.drawRect(btn->x, btn->y, btn->w, btn->h, COLOR_RED);
-        
+
         int cornerSize = 8;
         tft.drawFastHLine(btn->x, btn->y, cornerSize, COLOR_RED);
         tft.drawFastVLine(btn->x, btn->y, cornerSize, COLOR_RED);
@@ -376,11 +366,11 @@ void processTouchButtons(int tx, int ty) {
         tft.drawFastVLine(btn->x, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
         tft.drawFastHLine(btn->x + btn->w - cornerSize, btn->y + btn->h - 1, cornerSize, COLOR_RED);
         tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cornerSize, cornerSize, COLOR_RED);
-        
+
         for (int j = 2; j < btn->h - 2; j += 3) {
           tft.drawFastHLine(btn->x + 2, btn->y + j, btn->w - 4, COLOR_DARKGREY);
         }
-        
+
         tft.setTextColor(COLOR_RED);
         tft.setTextSize(2);
         int16_t x1, y1;
@@ -513,9 +503,7 @@ void drawBMP(const char *filename, int16_t x, int16_t y) {
 }
 
 // Futuristic button with scanlines and glowing effect
-void createTouchBox(int x, int y, int width, int height,
-                    uint16_t color, uint16_t textColor,
-                    const char *label, void (*callback)()) {
+void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)()) {
   if (buttonCount >= MAX_BUTTONS) {
     Serial.println("Max buttons reached!");
     return;
@@ -535,13 +523,13 @@ void createTouchBox(int x, int y, int width, int height,
   // Draw outer glow
   tft.drawRect(x - 1, y - 1, width + 2, height + 2, COLOR_DARKRED);
   tft.drawRect(x - 2, y - 2, width + 4, height + 4, COLOR_DARKGREY);
-  
+
   // Main button background
   tft.fillRect(x, y, width, height, COLOR_BLACK);
-  
+
   // Red border with corner accents
   tft.drawRect(x, y, width, height, COLOR_RED);
-  
+
   // Corner decorations
   int cornerSize = 8;
   // Top-left
@@ -556,7 +544,7 @@ void createTouchBox(int x, int y, int width, int height,
   // Bottom-right
   tft.drawFastHLine(x + width - cornerSize, y + height - 1, cornerSize, COLOR_RED);
   tft.drawFastVLine(x + width - 1, y + height - cornerSize, cornerSize, COLOR_RED);
-  
+
   // Add scanline effect
   for (int i = 2; i < height - 2; i += 3) {
     tft.drawFastHLine(x + 2, y + i, width - 4, COLOR_DARKGREY);
@@ -565,7 +553,7 @@ void createTouchBox(int x, int y, int width, int height,
   // Draw centered text
   tft.setTextColor(COLOR_RED);
   tft.setTextSize(2);
-  
+
   int16_t x1, y1;
   uint16_t w1, h1;
   tft.getTextBounds(label, 0, 0, &x1, &y1, &w1, &h1);
