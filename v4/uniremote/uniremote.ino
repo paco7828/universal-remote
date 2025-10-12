@@ -192,7 +192,7 @@ TouchButton buttons[MAX_BUTTONS];
 uint8_t buttonCount = 0;
 
 // Default theme
-constexpr uint8_t DEFAULT_THEME = THEME_FUTURISTIC_RED;
+const ThemeColors DEFAULT_THEME = THEME_FUTURISTIC_RED;
 
 // Touch calibration
 constexpr uint16_t TS_MINX = 240;
@@ -316,7 +316,7 @@ void drawHeaderFooter() {
 // Redraw the entire UI with current theme
 void drawMenuUI() {
   // Clear screen
-  tft.fillScreen(_BLACK);
+  tft.fillScreen(ILI9341_BLACK);
 
   // Draw header and footer
   drawHeaderFooter();
