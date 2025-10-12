@@ -66,113 +66,71 @@ struct Option {
   void (*callback)();
 };
 
-const Option options[] = {
-  { "Signal options", showSignalOptions },
-  { "Projector brands", showProjectorBrands },
-  { "SD Card", showSDData },
+// Menu options (first glance)
+const Option MENU_OPTIONS[] = {
+  { "Signal options", signalOptions },
+  { "Projector brands", projectorBrands },
+  { "SD Card options", sdData }
+};
+
+// Signal options
+const Option SIGNAL_OPTIONS[] = {
+  {"Transmit", transmitOptions},
+  {"Receive", receiveOptions},
+  {"Back", backToMenu}
+};
+
+// Projector brands
+const Option PROJECTOR_BRANDS[] = {
+  {"EPSON", epsonOptions},
+  {"ACER", acerOptions},
+  {"BENQ", benqOptions},
+  {"NEC", necOptions},
+  {"PANASONIC", panasonicOptions},
+  {"Back", backToMenu}
+}
+
+// SD Card
+const option SD_CARD_OPTIONS[] = {
+  {"Info", sdInfoOptions},
+  {"Files", listSDFiles},
+  {"Format", sdFormatOptions},
+  {"Back", backToMenu}
 };
 
 // Functions
-void showSignalOptions();
-void showProjectorBrands();
-void showSDData();
+// Display helper
+void initDisplay();
 void processTouchButtons(int tx, int ty);
 uint16_t read16(File &f);
 uint16_t read32(File &f);
 void drawBMP(const char *filename, int16_t x, int16_t y);
 void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)());
 bool isTouchInButton(TouchButton *btn, int tx, int ty);
-void epsonFreeze();
-void acerFreeze();
-void benqFreeze();
-void necFreeze();
-void panasonicFreeze();
+void createOptions(Option options[]);
+void backToMenu();
+
+// Signal options
+void signalOptions();
+void transmitOptions();
+void receiveOptions();
+
+// Projector brands
+void projectorBrands();
+void epsonOptions();
+void acerOptions();
+void benqOptions();
+void necOptions();
+void panasonicOptions();
+
+// SD Card
+void sdData();
+void sdInfoOptions();
+void listSDFiles();
+void sdFormatOptions();
 
 void setup() {
-  Serial.begin(115200);
-
-  // IR Tx & Rx
-  IrSender.begin(IR_TX);
-
-  // SPI
-  spi.begin(TFT_CLK, TFT_MISO, TFT_MOSI);
-  pinMode(TFT_CS, OUTPUT);
-  pinMode(TOUCH_CS, OUTPUT);
-  pinMode(SD_CS, OUTPUT);
-  digitalWrite(TFT_CS, HIGH);
-  digitalWrite(TOUCH_CS, HIGH);
-  digitalWrite(SD_CS, HIGH);
-
-  // Display
-  tft.begin(27000000);
-  tft.setRotation(2);
-  tft.fillScreen(ILI9341_BLACK);
-
-  // SD
-  digitalWrite(TFT_CS, HIGH);
-  digitalWrite(TOUCH_CS, HIGH);
-
-  if (!SD.begin(SD_CS, spi)) {
-    Serial.println("SD initialization failed!");
-  } else {
-    Serial.println("SD initialization done!");
-    // List files to verify
-    File root = SD.open("/");
-    if (root) {
-      File entry;
-      Serial.println("Files on SD:");
-      while ((entry = root.openNextFile())) {
-        Serial.print("  ");
-        Serial.println(entry.name());
-        entry.close();
-      }
-    }
-  }
-
-  // Setup
-  digitalWrite(SD_CS, HIGH);
-  delay(10);
-
-  // Futuristic header design
-  // Top border
-  tft.drawFastHLine(0, 0, 240, COLOR_RED);
-  tft.drawFastHLine(0, 1, 240, COLOR_RED);
-  
-  // Corner accents
-  for (int i = 0; i < 15; i++) {
-    tft.drawPixel(i, 2 + i/3, COLOR_RED);
-    tft.drawPixel(239 - i, 2 + i/3, COLOR_RED);
-  }
-  
-  // Main title
-  tft.setTextColor(COLOR_RED);
-  tft.setTextSize(3);
-  tft.setCursor(40, 10);
-  tft.println("PROJECTOR");
-  
-  // Subtitle with lines
-  tft.drawFastHLine(15, 38, 210, COLOR_DARKRED);
-  tft.setTextSize(1);
-  tft.setCursor(75, 42);
-  tft.println("REMOTE CONTROL");
-  tft.drawFastHLine(15, 52, 210, COLOR_DARKRED);
-
-  // Create futuristic buttons
-  for (int i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
-    createTouchBox(10, 65 + (50 * i), 220, 45, COLOR_RED, COLOR_RED, 
-                   options[i].name, options[i].callback);
-  }
-
-  // Touch
-  Serial.println("Initializing touch...");
-  if (touch.begin(spi)) {
-    Serial.println("Touch OK!");
-  } else {
-    Serial.println("Touch FAILED!");
-  }
-  touch.setRotation(2);
-
-  Serial.println("=== Setup Complete ===\n");
+ initDisplay();
 }
 
 void loop() {
@@ -231,15 +189,133 @@ void loop() {
   delay(10);
 }
 
-void showSignalOptions(){
+void initDisplay(){
+   Serial.begin(115200);
+
+  // IR Tx & Rx
+  IrSender.begin(IR_TX);
+
+  // SPI
+  spi.begin(TFT_CLK, TFT_MISO, TFT_MOSI);
+  pinMode(TFT_CS, OUTPUT);
+  pinMode(TOUCH_CS, OUTPUT);
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(TFT_CS, HIGH);
+  digitalWrite(TOUCH_CS, HIGH);
+  digitalWrite(SD_CS, HIGH);
+
+  // Display
+  tft.begin(27000000);
+  tft.setRotation(2);
+  tft.fillScreen(ILI9341_BLACK);
+
+  // SD
+  digitalWrite(TFT_CS, HIGH);
+  digitalWrite(TOUCH_CS, HIGH);
+
+  if (!SD.begin(SD_CS, spi)) {
+    Serial.println("SD initialization failed!");
+  }
+
+  // Setup
+  digitalWrite(SD_CS, HIGH);
+  delay(10);
+
+  // Futuristic header design
+  // Top border
+  tft.drawFastHLine(0, 0, 240, COLOR_RED);
+  tft.drawFastHLine(0, 1, 240, COLOR_RED);
+  
+  // Corner accents
+  for (int i = 0; i < 15; i++) {
+    tft.drawPixel(i, 2 + i/3, COLOR_RED);
+    tft.drawPixel(239 - i, 2 + i/3, COLOR_RED);
+  }
+  
+  // Main title
+  tft.setTextColor(COLOR_RED);
+  tft.setTextSize(3);
+  tft.setCursor(40, 10);
+  tft.println("PROJECTOR");
+  
+  // Subtitle with lines
+  tft.drawFastHLine(15, 38, 210, COLOR_DARKRED);
+  tft.setTextSize(1);
+  tft.setCursor(75, 42);
+  tft.println("REMOTE CONTROL");
+  tft.drawFastHLine(15, 52, 210, COLOR_DARKRED);
+
+  // Create menu options
+  createOptions(MENU_OPTIONS);
+
+  // Touch
+  Serial.println("Initializing touch...");
+  if (!touch.begin(spi)) {
+    Serial.println("Touch FAILED!");
+  }
+  touch.setRotation(2);
+}
+
+void createOptions(Option options[]){
+  // Create futuristic buttons
+  for (int i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
+    createTouchBox(10, 65 + (50 * i), 220, 45, COLOR_RED, COLOR_RED, options[i].name, options[i].callback);
+  }
+}
+
+void signalOptions(){
+  createOptions(SIGNAL_OPTIONS);
+}
+
+void transmitOptions(){
 
 }
 
-void showProjectorBrands(){
+void receiveOptions(){
 
 }
 
-void showSDData(){
+void backToMenu(){
+  createOptions(MENU_OPTIONS);
+}
+
+void projectorBrands(){
+  createOptions(PROJECTOR_BRANDS);
+}
+
+void epsonOptions(){
+
+}
+
+void acerOptions(){
+
+}
+
+void benqOptions(){
+
+}
+
+void necOptions(){
+
+}
+
+void panasonicOptions(){
+
+}
+
+void sdData(){
+  createOptions(SD_CARD_OPTIONS);
+}
+
+void sdInfoOptions(){
+
+}
+
+void listSDFiles(){
+
+}
+
+void sdFormatOptions(){
 
 }
 
@@ -506,24 +582,4 @@ bool isTouchInButton(TouchButton *btn, int tx, int ty) {
 
 void sendFixSignal(const uint16_t *signalData, size_t length) {
   IrSender.sendRaw(signalData, length, 38);
-}
-
-void epsonFreeze() {
-  sendFixSignal(EPSON_CODES[0], sizeof(EPSON_CODES[0]) / sizeof(EPSON_CODES[0][0]));
-}
-
-void acerFreeze() {
-  sendFixSignal(ACER_CODES[0], sizeof(ACER_CODES[0]) / sizeof(ACER_CODES[0][0]));
-}
-
-void benqFreeze() {
-  sendFixSignal(BENQ_CODES[0], sizeof(BENQ_CODES[0]) / sizeof(BENQ_CODES[0][0]));
-}
-
-void necFreeze() {
-  sendFixSignal(NEC_CODES[0], sizeof(NEC_CODES[0]) / sizeof(NEC_CODES[0][0]));
-}
-
-void panasonicFreeze() {
-  sendFixSignal(PANASONIC_CODES[0], sizeof(PANASONIC_CODES[0]) / sizeof(PANASONIC_CODES[0][0]));
 }
