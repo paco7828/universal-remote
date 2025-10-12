@@ -67,10 +67,26 @@ struct Option {
 };
 
 const Option options[] = {
-  { "Signal options", epsonFreeze },
-  { "Projector brands", acerFreeze },
-  { "SD Card", benqFreeze },
+  { "Signal options", showSignalOptions },
+  { "Projector brands", showProjectorBrands },
+  { "SD Card", showSDData },
 };
+
+// Functions
+void showSignalOptions();
+void showProjectorBrands();
+void showSDData();
+void processTouchButtons(int tx, int ty);
+uint16_t read16(File &f);
+uint16_t read32(File &f);
+void drawBMP(const char *filename, int16_t x, int16_t y);
+void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)());
+bool isTouchInButton(TouchButton *btn, int tx, int ty);
+void epsonFreeze();
+void acerFreeze();
+void benqFreeze();
+void necFreeze();
+void panasonicFreeze();
 
 void setup() {
   Serial.begin(115200);
@@ -213,6 +229,18 @@ void loop() {
   }
 
   delay(10);
+}
+
+void showSignalOptions(){
+
+}
+
+void showProjectorBrands(){
+
+}
+
+void showSDData(){
+
 }
 
 // Process touch for all buttons with futuristic feedback
