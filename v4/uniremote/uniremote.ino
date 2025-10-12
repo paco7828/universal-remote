@@ -6,35 +6,32 @@
 #include <IRremote.hpp>
 #include "./IR-codes.h"
 
+// ===================================================================================
+// ==================================== PINS =========================================
+// ===================================================================================
+
 // Display
-#define TFT_CS 7
-#define TFT_RST 10
-#define TFT_DC 2
-#define TFT_MOSI 6
-#define TFT_MISO 5
-#define TFT_CLK 4
+constexpr uint8_t TFT_CS = 7;
+constexpr uint8_t TFT_RST = 10;
+constexpr uint8_t TFT_DC = 2;
+constexpr uint8_t TFT_MOSI = 6;
+constexpr uint8_t TFT_MISO = 5;
+constexpr uint8_t TFT_CLK = 4;
 
 // Display > Touch
-#define TOUCH_CS 8
-#define TOUCH_IRQ 9
+constexpr uint8_t TOUCH_CS = 8;
+constexpr uint8_t TOUCH_IRQ = 9;
 
 // Display > SD
-#define SD_CS 3
+constexpr uint8_t SD_CS = 3;
 
 // IR Tx & Rx
-#define IR_TX 0
-#define IR_RX 1
+constexpr uint8_t IR_TX = 0;
+constexpr uint8_t IR_RX = 1;
 
-// Touch calibration
-#define TS_MINX 240
-#define TS_MINY 250
-#define TS_MAXX 3850
-#define TS_MAXY 3750
-
-// Initialize display & touch & SD
-SPIClass spi(FSPI);
-Adafruit_ILI9341 tft = Adafruit_ILI9341(&spi, TFT_DC, TFT_CS, TFT_RST);
-XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
+// ===================================================================================
+// ================================= STRUCTS =========================================
+// ===================================================================================
 
 // Touchable button structure
 struct TouchButton {
@@ -45,11 +42,6 @@ struct TouchButton {
   void (*callback)();
   bool pressed;
 };
-
-// Helper variables
-#define MAX_BUTTONS 10
-TouchButton buttons[MAX_BUTTONS];
-int buttonCount = 0;
 
 // Option structure with name and callback
 struct Option {
@@ -66,8 +58,9 @@ struct ThemeColors {
   uint16_t darkest;
 };
 
-// Global current theme colors
-ThemeColors currentTheme;
+// ===================================================================================
+// ================================== THEMES =========================================
+// ===================================================================================
 
 // Define theme presets
 const ThemeColors THEME_FUTURISTIC_RED = {
@@ -94,10 +87,10 @@ const ThemeColors THEME_FUTURISTIC_PURPLE = {
   0x2104   // Dark Grey
 };
 
-// Default theme
-#define DEFAULT_THEME THEME_FUTURISTIC_RED
+// ===================================================================================
+// ========================= FUNCTION PROROTYPES =====================================
+// ===================================================================================
 
-// Functions
 // Display helper
 void initDisplay();
 void processTouchButtons(int tx, int ty);
@@ -137,6 +130,10 @@ void drawMenuUI();
 void setThemeFuturisticRed();
 void setThemeFuturisticGreen();
 void setThemeFuturisticPurple();
+
+// ===================================================================================
+// ================================= OPTIONS =========================================
+// ===================================================================================
 
 // Menu options (first glance)
 const Option MENU_OPTIONS[] = {
@@ -179,9 +176,41 @@ const Option THEME_OPTIONS[] = {
   { "Back", backToMenu }
 };
 
+// ===================================================================================
+// ============================= INITIALIZATION ======================================
+// ===================================================================================
+
+// Initialize display & touch & SD
+SPIClass spi(FSPI);
+Adafruit_ILI9341 tft = Adafruit_ILI9341(&spi, TFT_DC, TFT_CS, TFT_RST);
+XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
+ThemeColors currentTheme;
+
+// Helper variables
+constexpr uint8_t MAX_BUTTONS = 10;
+TouchButton buttons[MAX_BUTTONS];
+uint8_t buttonCount = 0;
+
+// Default theme
+constexpr uint8_t DEFAULT_THEME = THEME_FUTURISTIC_RED;
+
+// Touch calibration
+constexpr uint16_t TS_MINX = 240;
+constexpr uint16_t TS_MINY = 250;
+constexpr uint16_t TS_MAXX = 3850;
+constexpr uint16_t TS_MAXY = 3750;
+
+// ===================================================================================
+// =================================== SETUP =========================================
+// ===================================================================================
+
 void setup() {
   initDisplay();
 }
+
+// ===================================================================================
+// ==================================== LOOP =========================================
+// ===================================================================================
 
 void loop() {
   if (touch.touched()) {
@@ -211,6 +240,10 @@ void loop() {
 
   delay(10);
 }
+
+// ===================================================================================
+// ============================= DISPLAY DRAWING =====================================
+// ===================================================================================
 
 void initDisplay() {
   Serial.begin(115200);
@@ -280,6 +313,178 @@ void drawHeaderFooter() {
   }
 }
 
+// Redraw the entire UI with current theme
+void drawMenuUI() {
+  // Clear screen
+  tft.fillScreen(_BLACK);
+
+  // Draw header and footer
+  drawHeaderFooter();
+
+  // Main title
+  tft.setTextColor(currentTheme.primary);
+  tft.setTextSize(3);
+  tft.setCursor(45, 10);
+  tft.println("UNIVERSAL");
+  tft.setCursor(70, 40);
+  tft.println("REMOTE");
+
+  // Return to main menu
+  backToMenu();
+}
+
+// ===================================================================================
+// ============================= DISPLAY OPTIONS =====================================
+// ===================================================================================
+
+void signalOptions() {
+  createOptions(SIGNAL_OPTIONS, 3, 10, 70);
+}
+
+void transmitOptions() {
+}
+
+void receiveOptions() {
+}
+
+void backToMenu() {
+  createOptions(MENU_OPTIONS, 4, 10, 70);
+}
+
+void projectorBrands() {
+  createOptions(PROJECTOR_BRANDS, 6, 10, 55, 220, 35);
+}
+
+void epsonOptions() {
+}
+
+void acerOptions() {
+}
+
+void benqOptions() {
+}
+
+void necOptions() {
+}
+
+void panasonicOptions() {
+}
+
+void sdData() {
+  createOptions(SD_CARD_OPTIONS, 4, 10, 70);
+}
+
+void sdInfoOptions() {
+}
+
+void listSDFiles() {
+}
+
+void sdFormatOptions() {
+}
+
+void themeOptions() {
+  createOptions(THEME_OPTIONS, 4, 10, 70);
+}
+
+// ===================================================================================
+// ===================================== THEMES ======================================
+// ===================================================================================
+
+void setThemeFuturisticRed() {
+  setTheme(0);
+}
+
+void setThemeFuturisticGreen() {
+  setTheme(1);
+}
+
+void setThemeFuturisticPurple() {
+  setTheme(2);
+}
+
+// Main setTheme function
+void setTheme(uint8_t themeIndex) {
+  Serial.print("Setting theme to: ");
+  Serial.println(themeIndex);
+
+  // Update current theme colors
+  switch (themeIndex) {
+    case 0:
+      currentTheme = THEME_FUTURISTIC_RED;
+      break;
+    case 1:
+      currentTheme = THEME_FUTURISTIC_GREEN;
+      break;
+    case 2:
+      currentTheme = THEME_FUTURISTIC_PURPLE;
+      break;
+    default:
+      currentTheme = THEME_FUTURISTIC_RED;
+      break;
+  }
+
+  // Redraw the entire UI with new theme
+  drawMenuUI();
+}
+
+// ===================================================================================
+// ============================== TOUCH BUTTONS ======================================
+// ===================================================================================
+
+// Process touch for all buttons with futuristic feedback
+void processTouchButtons(int tx, int ty) {
+  for (int i = 0; i < buttonCount; i++) {
+    TouchButton *btn = &buttons[i];
+
+    if (isTouchInButton(btn, tx, ty)) {
+      if (!btn->pressed) {
+        btn->pressed = true;
+        drawButton(btn, true);
+
+        // Call the callback function
+        if (btn->callback != NULL) {
+          btn->callback();
+        }
+      }
+    } else {
+      if (btn->pressed) {
+        btn->pressed = false;
+        drawButton(btn, false);
+      }
+    }
+  }
+}
+
+// Futuristic button with scanlines and glowing effect
+void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)()) {
+  if (buttonCount >= MAX_BUTTONS) {
+    Serial.println("Max buttons reached!");
+    return;
+  }
+
+  TouchButton *btn = &buttons[buttonCount];
+  btn->x = x;
+  btn->y = y;
+  btn->w = width;
+  btn->h = height;
+  btn->color = currentTheme.primary;
+  btn->textColor = currentTheme.primary;
+  btn->label = label;
+  btn->callback = callback;
+  btn->pressed = false;
+
+  // Draw button in normal state
+  drawButton(btn, false);
+
+  buttonCount++;
+}
+
+// Check if a point is inside a button
+bool isTouchInButton(TouchButton *btn, int tx, int ty) {
+  return (tx >= btn->x && tx <= (btn->x + btn->w) && ty >= btn->y && ty <= (btn->y + btn->h));
+}
+
 // Draw a button in normal or active state
 void drawButton(TouchButton *btn, bool active) {
   if (active) {
@@ -336,6 +541,7 @@ void drawButton(TouchButton *btn, bool active) {
   tft.print(btn->label);
 }
 
+// Create options using an array
 void createOptions(const Option options[], int count, int x, int y, int btnWidth, int btnHeight) {
   buttonCount = 0;
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
@@ -348,137 +554,9 @@ void createOptions(const Option options[], int count, int x, int y, int btnWidth
   drawHeaderFooter();
 }
 
-void signalOptions() {
-  createOptions(SIGNAL_OPTIONS, 3, 10, 70);
-}
-
-void transmitOptions() {
-}
-
-void receiveOptions() {
-}
-
-void backToMenu() {
-  createOptions(MENU_OPTIONS, 4, 10, 70);
-}
-
-void projectorBrands() {
-  createOptions(PROJECTOR_BRANDS, 6, 10, 55, 220, 35);
-}
-
-void epsonOptions() {
-}
-
-void acerOptions() {
-}
-
-void benqOptions() {
-}
-
-void necOptions() {
-}
-
-void panasonicOptions() {
-}
-
-void sdData() {
-  createOptions(SD_CARD_OPTIONS, 4, 10, 70);
-}
-
-void sdInfoOptions() {
-}
-
-void listSDFiles() {
-}
-
-void sdFormatOptions() {
-}
-
-void themeOptions() {
-  createOptions(THEME_OPTIONS, 4, 10, 70);
-}
-
-// Theme callback functions
-void setThemeFuturisticRed() {
-  setTheme(0);
-}
-
-void setThemeFuturisticGreen() {
-  setTheme(1);
-}
-
-void setThemeFuturisticPurple() {
-  setTheme(2);
-}
-
-// Main setTheme function
-void setTheme(uint8_t themeIndex) {
-  Serial.print("Setting theme to: ");
-  Serial.println(themeIndex);
-
-  // Update current theme colors
-  switch (themeIndex) {
-    case 0:
-      currentTheme = THEME_FUTURISTIC_RED;
-      break;
-    case 1:
-      currentTheme = THEME_FUTURISTIC_GREEN;
-      break;
-    case 2:
-      currentTheme = THEME_FUTURISTIC_PURPLE;
-      break;
-    default:
-      currentTheme = THEME_FUTURISTIC_RED;
-      break;
-  }
-
-  // Redraw the entire UI with new theme
-  drawMenuUI();
-}
-
-// Redraw the entire UI with current theme
-void drawMenuUI() {
-  // Clear screen
-  tft.fillScreen(ILI9341_BLACK);
-
-  // Draw header and footer
-  drawHeaderFooter();
-
-  // Main title
-  tft.setTextColor(currentTheme.primary);
-  tft.setTextSize(3);
-  tft.setCursor(45, 10);
-  tft.println("UNIVERSAL");
-  tft.setCursor(70, 40);
-  tft.println("REMOTE");
-
-  // Return to main menu
-  backToMenu();
-}
-
-// Process touch for all buttons with futuristic feedback
-void processTouchButtons(int tx, int ty) {
-  for (int i = 0; i < buttonCount; i++) {
-    TouchButton *btn = &buttons[i];
-
-    if (isTouchInButton(btn, tx, ty)) {
-      if (!btn->pressed) {
-        btn->pressed = true;
-        drawButton(btn, true);
-
-        // Call the callback function
-        if (btn->callback != NULL) {
-          btn->callback();
-        }
-      }
-    } else {
-      if (btn->pressed) {
-        btn->pressed = false;
-        drawButton(btn, false);
-      }
-    }
-  }
-}
+// ===================================================================================
+// =============================== IMAGE DISPLAY =====================================
+// ===================================================================================
 
 // Helper functions to read little-endian data
 uint16_t read16(File &f) {
@@ -599,34 +677,9 @@ void drawBMP(const char *filename, int16_t x, int16_t y) {
   Serial.println("BMP loaded successfully!");
 }
 
-// Futuristic button with scanlines and glowing effect
-void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)()) {
-  if (buttonCount >= MAX_BUTTONS) {
-    Serial.println("Max buttons reached!");
-    return;
-  }
-
-  TouchButton *btn = &buttons[buttonCount];
-  btn->x = x;
-  btn->y = y;
-  btn->w = width;
-  btn->h = height;
-  btn->color = currentTheme.primary;
-  btn->textColor = currentTheme.primary;
-  btn->label = label;
-  btn->callback = callback;
-  btn->pressed = false;
-
-  // Draw button in normal state
-  drawButton(btn, false);
-
-  buttonCount++;
-}
-
-// Check if a point is inside a button
-bool isTouchInButton(TouchButton *btn, int tx, int ty) {
-  return (tx >= btn->x && tx <= (btn->x + btn->w) && ty >= btn->y && ty <= (btn->y + btn->h));
-}
+// ===================================================================================
+// ================================= IR Rx & Tx ======================================
+// ===================================================================================
 
 void sendFixSignal(const uint16_t *signalData, size_t length) {
   IrSender.sendRaw(signalData, length, 38);
