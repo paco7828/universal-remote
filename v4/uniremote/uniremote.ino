@@ -109,6 +109,9 @@ void backToMenu();
 // Signal options
 void signalOptions();
 void transmitOptions();
+void listSavedSignals();
+void listFavoriteSignals();
+void startSignalListen();
 void receiveOptions();
 
 // Projector brands
@@ -150,6 +153,17 @@ const Option SIGNAL_OPTIONS[] = {
   { "Transmit", transmitOptions },
   { "Receive", receiveOptions },
   { "Back", backToMenu }
+};
+
+const Option TRANSMIT_OPTIONS[] = {
+  {"Saved signals", listSavedSignals},
+  {"Favorites", listFavoriteSignals},
+  {"Back", signalOptions}
+};
+
+const Option RECEIVE_OPTIONS[] = {
+  {"Start listening", startSignalListen},
+  {"Back", signalOptions}
 };
 
 // Projector brands
@@ -359,9 +373,23 @@ void signalOptions() {
 }
 
 void transmitOptions() {
+  createOptions(TRANSMIT_OPTIONS, 3);
+}
+
+void listSavedSignals(){
+
+}
+
+void listFavoriteSignals(){
+
+}
+
+void startSignalListen(){
+
 }
 
 void receiveOptions() {
+  createOptions(RECEIVE_OPTIONS, 2);
 }
 
 void backToMenu() {
