@@ -117,6 +117,7 @@ void receiveOptions();
 
 // Projector brands
 void projectorBrands();
+void drawProjectorOptions(uint8_t brandIndex, const char *titleName, uint8_t titleXValue);
 void epsonOptions();
 void acerOptions();
 void benqOptions();
@@ -446,39 +447,81 @@ void projectorBrands() {
   drawTitle("Projector brands", 70);
 }
 
-void epsonOptions() {
-  buttonCount = 0;
+void drawProjectorOptions(uint8_t brandIndex, const char *titleName, uint8_t titleXValue) {
+  const IRCode* selectedArr = nullptr;
+  uint8_t selectedArrLength = 0;
+  // Option extractedCodes[EPSON_CODES_LENGTH] = {};
+
+  // titleXValue based on characters?
+  // Select array by index
+  switch (brandIndex) {
+    // Epson
+    case 0:
+      selectedArr = EPSON_CODES;
+      selectedArrLength = EPSON_CODES_LENGTH;
+      break;
+    // Acer
+    case 1:
+      selectedArr = ACER_CODES;
+      selectedArrLength = ACER_CODES_LENGTH;
+      break;
+    // BenQ
+    case 2:
+      selectedArr = BENQ_CODES;
+      selectedArrLength = BENQ_CODES_LENGTH;
+      break;
+    // NEC
+    case 3:
+      selectedArr = NEC_CODES;
+      selectedArrLength = NEC_CODES_LENGTH;
+      break;
+    // Panasonic
+    case 4:
+      selectedArr = PANASONIC_CODES;
+      selectedArrLength = PANASONIC_CODES_LENGTH;
+      break;
+    // Invalid index
+    default:
+      Serial.println("Invalid projector index");
+      drawMenuUI();
+      return;
+  }
+
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
   drawHeaderFooter();
-  drawTitle("Projector > EPSON", 65);
+
+  Serial.println(titleName);
+  for (int i = 0; i < selectedArrLength; i++) {
+    Serial.println(selectedArr[i].codeName);
+    for (int j = 0; j < sizeof(selectedArr[i].codeArray) / sizeof(selectedArr[i].codeArray[0]); j++) {
+      Serial.print(selectedArr[i].codeArray[j], HEX);
+      Serial.print(" ");
+    }
+    Serial.println("\n------------------------------");
+    // extractedCodes[i] = {EPSON_CODES[i].codeName, sendFixSignal(EPSON_CODES[i].codeArray)};
+  }
+  String fullTitle = "Projector > " + String(titleName);
+  drawTitle(fullTitle.c_str(), titleXValue);
+}
+
+void epsonOptions() {
+  drawProjectorOptions(0, "EPSON",65);
 }
 
 void acerOptions() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
-  drawHeaderFooter();
-  drawTitle("Projector > ACER", 70);
+  drawProjectorOptions(1, "ACER", 70);
 }
 
 void benqOptions() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
-  drawHeaderFooter();
-  drawTitle("Projector > BENQ", 70);
+  drawProjectorOptions(2, "BENQ", 70);
 }
 
 void necOptions() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
-  drawHeaderFooter();
-  drawTitle("Projector > NEC", 75);
+  drawProjectorOptions(3, "NEC", 75);
 }
 
 void panasonicOptions() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
-  drawHeaderFooter();
-  drawTitle("Projector > PANASONIC", 55);
+  drawProjectorOptions(4, "PANASONIC", 55);
 }
 
 void sdData() {
