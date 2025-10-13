@@ -95,6 +95,7 @@ const ThemeColors THEME_FUTURISTIC_PURPLE = {
 // Display helper
 void initDisplay();
 void drawMenuUI();
+void drawBackBtn(uint8_t x, uint8_t y, uint8_t width, uint8_t height, void (*callback)());
 void drawTitle(const char *titleName, uint16_t x = 90, uint16_t y = 305);
 void processTouchButtons(int tx, int ty);
 void drawButton(TouchButton *btn, bool active);
@@ -148,6 +149,13 @@ const Option MENU_OPTIONS[] = {
   { "Signal options", signalOptions },
   { "Projector brands", projectorBrands },
   { "SD Card options", sdData },
+  { "Change theme", themeOptions }
+};
+
+// Menu options (without SD card option)
+const Option MENU_OPTIONS_NO_SD[] = {
+  { "Signal options", signalOptions },
+  { "Projector brands", projectorBrands },
   { "Change theme", themeOptions }
 };
 
@@ -209,6 +217,7 @@ ThemeColors currentTheme;
 constexpr uint8_t MAX_BUTTONS = 10;
 TouchButton buttons[MAX_BUTTONS];
 uint8_t buttonCount = 0;
+bool initializedSD = false;
 
 // Default theme
 const ThemeColors DEFAULT_THEME = THEME_FUTURISTIC_RED;
@@ -294,10 +303,12 @@ void initDisplay() {
   digitalWrite(TFT_CS, HIGH);
   digitalWrite(TOUCH_CS, HIGH);
 
-  if (!SD.begin(SD_CS, spi, 4000000)) {  // 4MHz - much slower
+  if (!SD.begin(SD_CS, spi, 4000000)) {
     Serial.println("SD initialization failed!");
+    initializedSD = false;
   } else {
     Serial.println("SD initialized successfully!");
+    initializedSD = true;
   }
 
   // Setup
@@ -360,8 +371,16 @@ void drawMenuUI() {
   tft.println("REMOTE");
 
   // Draw menu options & title
-  createOptions(MENU_OPTIONS, 4, 10, 70);
+  if (initializedSD) {
+    createOptions(MENU_OPTIONS, 4, 10, 70);
+  } else {
+    createOptions(MENU_OPTIONS_NO_SD, 3, 10, 80);
+  }
   drawTitle("MENU", 110);
+}
+
+void drawBackBtn(uint8_t x, uint8_t y, uint8_t width, uint8_t height, void (*callback)()) {
+  createTouchBox(x, y, width, height, currentTheme.secondary, currentTheme.secondary, "Back", callback, true);
 }
 
 // ===================================================================================
@@ -560,26 +579,26 @@ void listSDInfo() {
   tft.drawFastHLine(0, yPos - 12, 240, currentTheme.primary);
   tft.drawFastHLine(0, yPos - 10, 240, currentTheme.primary);
 
-  // Available storage
+  // Available storage in MB/GB
   tft.setTextSize(2);
   tft.setCursor(10, yPos);
   tft.print("Full: ");
   tft.println(formatBytes(totalBytes));
   yPos += 20;
 
-  // Free storage
+  // Free storage in MB/GB
   tft.setCursor(10, yPos);
   tft.print("Free: ");
   tft.println(formatBytes(freeBytes));
   yPos += 20;
 
-  // Used storage
+  // Used storage in MB/GB
   tft.setCursor(10, yPos);
   tft.print("Used: ");
   tft.println(formatBytes(usedBytes));
   yPos += 40;
 
-  // Files
+  // Files header
   tft.setTextSize(3);
   tft.setCursor(5, yPos);
   tft.println("Files");
@@ -587,21 +606,26 @@ void listSDInfo() {
   tft.drawFastHLine(0, yPos + 28, 240, currentTheme.primary);
   yPos += 40;
 
-  // Display file counts
+  // Images count
   tft.setTextSize(2);
   tft.setCursor(10, yPos);
   tft.print("Images: ");
   tft.println(imageCount);
   yPos += 20;
 
+  // Saved signals count
   tft.setCursor(10, yPos);
   tft.print("Saved signals: ");
   tft.println(savedSignalsCount);
   yPos += 20;
 
+  // Built-in signals count
   tft.setCursor(10, yPos);
   tft.print("Built-in signals:");
   tft.println(builtInSignalsCount);
+
+  // Back button
+  drawBackBtn(185, 130, 55, 50, sdData);
 }
 
 String formatBytes(uint64_t bytes) {
