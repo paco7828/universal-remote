@@ -132,6 +132,8 @@ String formatBytes(uint64_t bytes);
 int countFilesInDirectory(const char *directoryPath);
 void listSDFiles();
 void sdFormatOptions();
+bool deleteDirectory(const char *path);
+void formatSD();
 
 // Theme
 void themeOptions();
@@ -193,6 +195,11 @@ const Option SD_CARD_OPTIONS[] = {
   { "Files", listSDFiles },
   { "Format", sdFormatOptions },
   { "Back", drawMenuUI }
+};
+
+const Option SD_FORMAT_OPTIONS[] = {
+  { "Yes, format", formatSD },
+  { "Cancel formatting", sdData }
 };
 
 // Theme
@@ -304,10 +311,8 @@ void initDisplay() {
   digitalWrite(TOUCH_CS, HIGH);
 
   if (!SD.begin(SD_CS, spi, 4000000)) {
-    Serial.println("SD initialization failed!");
     initializedSD = false;
   } else {
-    Serial.println("SD initialized successfully!");
     initializedSD = true;
   }
 
@@ -319,9 +324,8 @@ void initDisplay() {
   drawMenuUI();
 
   // Touch
-  Serial.println("Initializing touch...");
   if (!touch.begin(spi)) {
-    Serial.println("Touch FAILED!");
+    Serial.println("Touch init failed!");
   }
   touch.setRotation(2);
 }
@@ -505,7 +509,6 @@ void drawProjectorOptions(uint8_t brandIndex, const char *titleName, uint8_t tit
       break;
     // Invalid index
     default:
-      Serial.println("Invalid projector index");
       drawMenuUI();
       return;
   }
@@ -674,7 +677,127 @@ void sdFormatOptions() {
   buttonCount = 0;
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
   drawHeaderFooter();
+  createOptions(SD_FORMAT_OPTIONS, 2, 10, 100);
   drawTitle("SD Card > Format", 75);
+}
+
+bool deleteDirectory(const char *path) {
+  File dir = SD.open(path);
+
+  if (!dir) {
+    return false;
+  }
+
+  if (!dir.isDirectory()) {
+    dir.close();
+    return SD.remove(path);
+  }
+
+  // Delete all files and subdirectories
+  File entry = dir.openNextFile();
+  while (entry) {
+    String entryPath = String(path) + "/" + String(entry.name());
+
+    if (entry.isDirectory()) {
+      entry.close();
+      if (!deleteDirectory(entryPath.c_str())) {
+        dir.close();
+        return false;
+      }
+    } else {
+      entry.close();
+      if (!SD.remove(entryPath.c_str())) {
+        dir.close();
+        return false;
+      }
+    }
+
+    entry = dir.openNextFile();
+  }
+
+  dir.close();
+  return SD.rmdir(path);
+}
+
+void formatSD() {
+  File root = SD.open("/");
+
+  if (!root) {
+    return;
+  }
+
+  tft.setTextColor(currentTheme.primary);
+  tft.setTextSize(2);
+  tft.setCursor(30, 100);
+  tft.println("Formatting...");
+
+  File entry = root.openNextFile();
+  while (entry) {
+    tft.fillRect(0, 130, 240, 50, ILI9341_BLACK);
+    String entryName = String(entry.name());
+    bool isDir = entry.isDirectory();
+    entry.close();
+    tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+
+    // Skip protected and built-in folders
+    if (entryName == "System Volume Information" || entryName == "built-in-signals" || entryName == "/built-in-signals") {
+      tft.setCursor(10, 130);
+      tft.setTextColor(currentTheme.primary);
+      tft.print("Skipping:");
+      tft.setCursor(0, 160);
+      tft.setTextColor(ILI9341_WHITE);
+      tft.println(entryName);
+      entry = root.openNextFile();
+      delay(2000);
+      continue;
+    }
+
+    String fullPath = "/" + entryName;
+
+    tft.setCursor(10, 130);
+    tft.setTextColor(currentTheme.primary);
+    tft.print("Processing:");
+    tft.setCursor(0, 160);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.println(entryName);
+
+    bool success;
+    if (isDir) {
+      success = deleteDirectory(fullPath.c_str());
+    } else {
+      success = SD.remove(fullPath.c_str());
+    }
+
+    if (success) {
+      tft.setCursor(10, 130);
+      tft.setTextColor(currentTheme.primary);
+      tft.println("Deleted:");
+      tft.setCursor(0, 160);
+      tft.setTextColor(ILI9341_WHITE);
+      tft.println(entryName);
+      delay(2000);
+    } else {
+      tft.setCursor(10, 130);
+      tft.setTextColor(currentTheme.primary);
+      tft.println("Failed to delete:");
+      tft.setCursor(0, 160);
+      tft.setTextColor(ILI9341_WHITE);
+      tft.println(entryName);
+      delay(2000);
+    }
+
+    entry = root.openNextFile();
+  }
+
+  root.close();
+
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  tft.setTextColor(currentTheme.primary);
+  tft.setTextSize(2);
+  tft.setCursor(20, 140);
+  tft.println("Formatting done!");
+  delay(2000);
+  drawMenuUI();
 }
 
 void themeOptions() {
@@ -700,9 +823,6 @@ void setThemeFuturisticPurple() {
 
 // Main setTheme function
 void setTheme(uint8_t themeIndex) {
-  Serial.print("Setting theme to: ");
-  Serial.println(themeIndex);
-
   // Update current theme colors
   switch (themeIndex) {
     case 0:
@@ -905,9 +1025,6 @@ uint32_t read32(File &f) {
 }
 
 void drawBMP(const char *filename, int16_t x, int16_t y) {
-  Serial.print("Loading BMP: ");
-  Serial.println(filename);
-
   // Ensure TFT is deselected before accessing SD
   digitalWrite(TFT_CS, HIGH);
   digitalWrite(TOUCH_CS, HIGH);
@@ -915,40 +1032,28 @@ void drawBMP(const char *filename, int16_t x, int16_t y) {
 
   File bmpFile = SD.open(filename);
   if (!bmpFile) {
-    Serial.println("File not found!");
     return;
   }
-  Serial.println("File opened");
 
   // Verify BMP signature
   if (read16(bmpFile) != 0x4D42) {
-    Serial.println("Not a BMP file");
     bmpFile.close();
     return;
   }
-  Serial.println("Valid BMP signature");
 
   read32(bmpFile);  // skip file size
   read32(bmpFile);  // skip creator bytes
   uint32_t bmpImageOffset = read32(bmpFile);
-  Serial.print("Image offset: ");
-  Serial.println(bmpImageOffset);
 
   read32(bmpFile);  // DIB header size
   int32_t bmpWidth = read32(bmpFile);
   int32_t bmpHeight = read32(bmpFile);
-  Serial.print("Image size: ");
-  Serial.print(bmpWidth);
-  Serial.print(" x ");
-  Serial.println(bmpHeight);
 
   read16(bmpFile);  // color planes
   uint16_t bmpDepth = read16(bmpFile);
   read32(bmpFile);  // compression
 
   if (bmpDepth != 24) {
-    Serial.print("Unsupported BMP depth: ");
-    Serial.println(bmpDepth);
     bmpFile.close();
     return;
   }
@@ -956,16 +1061,12 @@ void drawBMP(const char *filename, int16_t x, int16_t y) {
   if (bmpHeight < 0)
     bmpHeight = -bmpHeight;
   uint32_t rowSize = (bmpWidth * 3 + 3) & ~3;
-  Serial.print("Row size: ");
-  Serial.println(rowSize);
 
   uint8_t sdbuffer[3 * 20];
 
   // Now switch to TFT for drawing
   digitalWrite(SD_CS, HIGH);
   delay(10);
-
-  Serial.println("Starting to draw...");
 
   for (int row = 0; row < bmpHeight; row++) {
     // Switch to SD to read data
@@ -993,17 +1094,10 @@ void drawBMP(const char *filename, int16_t x, int16_t y) {
       }
       col += chunk;
     }
-
-    // Print progress every 10 rows
-    if (row % 10 == 0) {
-      Serial.print("Row: ");
-      Serial.println(row);
-    }
   }
 
   digitalWrite(TFT_CS, HIGH);
   bmpFile.close();
-  Serial.println("BMP loaded successfully!");
 }
 
 // ===================================================================================
