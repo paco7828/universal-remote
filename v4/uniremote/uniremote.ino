@@ -94,6 +94,8 @@ const ThemeColors THEME_FUTURISTIC_PURPLE = {
 
 // Display helper
 void initDisplay();
+void drawMenuUI();
+void drawTitle(const char *titleName, uint16_t x = 90, uint16_t y = 305);
 void processTouchButtons(int tx, int ty);
 void drawButton(TouchButton *btn, bool active);
 void drawHeaderFooter();
@@ -104,7 +106,6 @@ void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_
 bool isTouchInButton(TouchButton *btn, int tx, int ty);
 void createOptions(const Option options[], int count, int x = 10, int y = 50, int btnWidth = 220, int btnHeight = 45);
 void createGridOptions(const Option options[], int count, int rows, int cols, int startX = 10, int startY = 70, int spacing = 5, int btnSize = 50);
-void backToMenu();
 
 // Signal options
 void signalOptions();
@@ -131,7 +132,6 @@ void sdFormatOptions();
 // Theme
 void themeOptions();
 void setTheme(uint8_t themeIndex);
-void drawMenuUI();
 void setThemeFuturisticRed();
 void setThemeFuturisticGreen();
 void setThemeFuturisticPurple();
@@ -152,18 +152,18 @@ const Option MENU_OPTIONS[] = {
 const Option SIGNAL_OPTIONS[] = {
   { "Transmit", transmitOptions },
   { "Receive", receiveOptions },
-  { "Back", backToMenu }
+  { "Back", signalOptions }
 };
 
 const Option TRANSMIT_OPTIONS[] = {
-  {"Saved signals", listSavedSignals},
-  {"Favorites", listFavoriteSignals},
-  {"Back", signalOptions}
+  { "Saved signals", listSavedSignals },
+  { "Favorites", listFavoriteSignals },
+  { "Back", signalOptions }
 };
 
 const Option RECEIVE_OPTIONS[] = {
-  {"Start listening", startSignalListen},
-  {"Back", signalOptions}
+  { "Start listening", startSignalListen },
+  { "Back", signalOptions }
 };
 
 // Projector brands
@@ -173,7 +173,7 @@ const Option PROJECTOR_BRANDS[] = {
   { "BENQ", benqOptions },
   { "NEC", necOptions },
   { "PANASONIC", panasonicOptions },
-  { "Back", backToMenu }
+  { "Back", drawMenuUI }
 };
 
 // SD Card
@@ -181,7 +181,7 @@ const Option SD_CARD_OPTIONS[] = {
   { "Info", listSDInfo },
   { "Files", listSDFiles },
   { "Format", sdFormatOptions },
-  { "Back", backToMenu }
+  { "Back", drawMenuUI }
 };
 
 // Theme
@@ -189,7 +189,7 @@ const Option THEME_OPTIONS[] = {
   { "Futuristic Red", setThemeFuturisticRed },
   { "Futuristic Green", setThemeFuturisticGreen },
   { "Futuristic Purple", setThemeFuturisticPurple },
-  { "Back", backToMenu }
+  { "Back", drawMenuUI }
 };
 
 // ===================================================================================
@@ -215,6 +215,10 @@ constexpr uint16_t TS_MINX = 240;
 constexpr uint16_t TS_MINY = 250;
 constexpr uint16_t TS_MAXX = 3850;
 constexpr uint16_t TS_MAXY = 3750;
+
+// Debouncing variables
+unsigned long lastTouchTime = 0;
+constexpr unsigned long DEBOUNCE_DELAY = 300; // ms
 
 // ===================================================================================
 // =================================== SETUP =========================================
@@ -306,11 +310,17 @@ void initDisplay() {
   touch.setRotation(2);
 }
 
+void drawTitle(const char *titleName, uint16_t x, uint16_t y) {
+  tft.setTextSize(1);
+  tft.setCursor(x, y);
+  tft.setTextColor(currentTheme.primary);
+  tft.println(titleName);
+}
+
 // Draw header and footer decorations
 void drawHeaderFooter() {
   // Header border
-  tft.drawFastHLine(0, 0, 240, currentTheme.primary);
-  tft.drawFastHLine(0, 1, 240, currentTheme.primary);
+  tft.drawFastHLine(0, 0, 239, currentTheme.primary);
 
   // Top corner accents
   for (int i = 0; i < 15; i++) {
@@ -320,7 +330,6 @@ void drawHeaderFooter() {
 
   // Footer border
   tft.drawFastHLine(0, 318, 240, currentTheme.primary);
-  tft.drawFastHLine(0, 319, 240, currentTheme.primary);
 
   // Bottom corner accents
   for (int i = 0; i < 15; i++) {
@@ -345,8 +354,9 @@ void drawMenuUI() {
   tft.setCursor(70, 40);
   tft.println("REMOTE");
 
-  // Return to main menu
-  backToMenu();
+  // Draw menu options & title
+  createOptions(MENU_OPTIONS, 4, 10, 70);
+  drawTitle("MENU", 110);
 }
 
 // ===================================================================================
@@ -367,33 +377,42 @@ void signalOptions() {
   createTouchBox(startX + btnSize + spacing, 70, btnSize, btnSize, currentTheme.primary, currentTheme.primary, "Receive", receiveOptions);
 
   // Centered "Back" button
-  createTouchBox(60, 190, 120, 45, currentTheme.secondary, currentTheme.secondary, "Back", backToMenu, true);
+  createTouchBox(60, 190, 120, 45, currentTheme.secondary, currentTheme.secondary, "Back", drawMenuUI, true);
 
   drawHeaderFooter();
+
+  drawTitle("Signal options", 80);
 }
 
 void transmitOptions() {
   createOptions(TRANSMIT_OPTIONS, 3, 10, 100);
+  drawTitle("Signal > Transmit", 70);
 }
 
-void listSavedSignals(){
-
+void listSavedSignals() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Transmit > Saved", 70);
 }
 
-void listFavoriteSignals(){
-
+void listFavoriteSignals() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Transmit > Favorites", 60);
 }
 
-void startSignalListen(){
-
+void startSignalListen() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Receive > Listen", 70);
 }
 
 void receiveOptions() {
   createOptions(RECEIVE_OPTIONS, 2, 10, 120);
-}
-
-void backToMenu() {
-  createOptions(MENU_OPTIONS, 4, 10, 70);
+  drawTitle("Signal > Receive", 70);
 }
 
 void projectorBrands() {
@@ -424,30 +443,55 @@ void projectorBrands() {
   }
 
   drawHeaderFooter();
+  drawTitle("Projector brands", 70);
 }
 
 void epsonOptions() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Projector > EPSON", 65);
 }
 
 void acerOptions() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Projector > ACER", 70);
 }
 
 void benqOptions() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Projector > BENQ", 70);
 }
 
 void necOptions() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Projector > NEC", 75);
 }
 
 void panasonicOptions() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("Projector > PANASONIC", 55);
 }
 
 void sdData() {
   createOptions(SD_CARD_OPTIONS, 4, 10, 70);
+  drawTitle("SD Card options", 75);
 }
 
 void listSDInfo() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("SD Card > Info", 75);
   /* Fix needed
-  tft.fillScreen(ILI9341_BLACK);
   tft.setTextSize(2);
   tft.setTextColor(currentTheme.primary);
   tft.setCursor(10, 60);
@@ -463,16 +507,25 @@ void listSDInfo() {
   tft.setCursor(10, 110);
   tft.println("Images: ");
   */
-  }
+}
 
 void listSDFiles() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("SD Card > Files", 75);
 }
 
 void sdFormatOptions() {
+  buttonCount = 0;
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+  drawTitle("SD Card > Format", 75);
 }
 
 void themeOptions() {
   createOptions(THEME_OPTIONS, 4, 10, 70);
+  drawTitle("Change theme", 85);
 }
 
 // ===================================================================================
@@ -522,6 +575,8 @@ void setTheme(uint8_t themeIndex) {
 
 // Process touch for all buttons with futuristic feedback
 void processTouchButtons(int tx, int ty) {
+  unsigned long currentTime = millis();
+  
   for (int i = 0; i < buttonCount; i++) {
     TouchButton *btn = &buttons[i];
 
@@ -530,8 +585,9 @@ void processTouchButtons(int tx, int ty) {
         btn->pressed = true;
         drawButton(btn, true);
 
-        // Call the callback function
-        if (btn->callback != NULL) {
+        // Call the callback function ONLY if enough time has passed
+        if (btn->callback != NULL && (currentTime - lastTouchTime > DEBOUNCE_DELAY)) {
+          lastTouchTime = currentTime;
           btn->callback();
         }
       }
@@ -580,7 +636,7 @@ void drawButton(TouchButton *btn, bool active) {
     // Back button reversed logic
     active = !active;
   }
-  
+
   if (active) {
     // Active state - filled with button's color
     tft.fillRect(btn->x, btn->y, btn->w, btn->h, btn->color);
@@ -643,8 +699,8 @@ void createOptions(const Option options[], int count, int x, int y, int btnWidth
   for (int i = 0; i < count; i++) {
     // Check if this is the last option and it's named "Back"
     bool isBack = (i == count - 1 && strcmp(options[i].name, "Back") == 0);
-    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight, 
-                   currentTheme.primary, currentTheme.primary, 
+    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight,
+                   currentTheme.primary, currentTheme.primary,
                    options[i].name, options[i].callback, isBack);
   }
 
@@ -660,7 +716,7 @@ void createGridOptions(const Option options[], int count, int rows, int cols, in
     for (int col = 0; col < cols && buttonIndex < count; col++) {
       int x = startX + col * (btnSize + spacing);
       int y = startY + row * (btnSize + spacing);
-      
+
       // Check if this is the last option and it's named "Back"
       bool isBack = (buttonIndex == count - 1 && strcmp(options[buttonIndex].name, "Back") == 0);
 
