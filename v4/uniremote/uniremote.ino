@@ -127,6 +127,8 @@ void panasonicOptions();
 // SD Card
 void sdData();
 void listSDInfo();
+String formatBytes(uint64_t bytes);
+int countFilesInDirectory(const char *directoryPath);
 void listSDFiles();
 void sdFormatOptions();
 
@@ -219,7 +221,7 @@ constexpr uint16_t TS_MAXY = 3750;
 
 // Debouncing variables
 unsigned long lastTouchTime = 0;
-constexpr unsigned long DEBOUNCE_DELAY = 300; // ms
+constexpr unsigned long DEBOUNCE_DELAY = 300;  // ms
 
 // ===================================================================================
 // =================================== SETUP =========================================
@@ -292,8 +294,10 @@ void initDisplay() {
   digitalWrite(TFT_CS, HIGH);
   digitalWrite(TOUCH_CS, HIGH);
 
-  if (!SD.begin(SD_CS, spi)) {
+  if (!SD.begin(SD_CS, spi, 4000000)) {  // 4MHz - much slower
     Serial.println("SD initialization failed!");
+  } else {
+    Serial.println("SD initialized successfully!");
   }
 
   // Setup
@@ -426,13 +430,13 @@ void projectorBrands() {
   int spacing = 5;
   int startX = (240 - (btnWidth * 2 + spacing)) / 2;
   int startY = 120;
-  
+
   int buttonIndex = 0;
   for (int row = 0; row < 3 && buttonIndex < 6; row++) {
     for (int col = 0; col < 2 && buttonIndex < 6; col++) {
       int x = startX + col * (btnWidth + spacing);
       int y = startY + row * (btnHeight + spacing);
-      
+
       bool isBack = (buttonIndex == 5 && strcmp(PROJECTOR_BRANDS[buttonIndex].name, "Back") == 0);
 
       createTouchBox(x, y, btnWidth, btnHeight,
@@ -448,7 +452,7 @@ void projectorBrands() {
 }
 
 void drawProjectorOptions(uint8_t brandIndex, const char *titleName, uint8_t titleXValue) {
-  const IRCode* selectedArr = nullptr;
+  const IRCode *selectedArr = nullptr;
   uint8_t selectedArrLength = 0;
   // Option extractedCodes[EPSON_CODES_LENGTH] = {};
 
@@ -505,7 +509,7 @@ void drawProjectorOptions(uint8_t brandIndex, const char *titleName, uint8_t tit
 }
 
 void epsonOptions() {
-  drawProjectorOptions(0, "EPSON",65);
+  drawProjectorOptions(0, "EPSON", 65);
 }
 
 void acerOptions() {
@@ -534,22 +538,105 @@ void listSDInfo() {
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
   drawHeaderFooter();
   drawTitle("SD Card > Info", 75);
-  /* Fix needed
-  tft.setTextSize(2);
+
+  // Get storage information
+  uint64_t totalBytes = SD.totalBytes();
+  uint64_t usedBytes = SD.usedBytes();
+  uint64_t freeBytes = totalBytes - usedBytes;
+
+  // Count files in directories
+  int imageCount = countFilesInDirectory("/images");
+  int savedSignalsCount = countFilesInDirectory("/saved-signals");
+  int builtInSignalsCount = countFilesInDirectory("/built-in-signals");
+
+  int yPos = 110;
+
+  tft.setTextSize(3);
   tft.setTextColor(currentTheme.primary);
-  tft.setCursor(10, 60);
-  tft.println("Storage size:");
-  tft.setCursor(10, 70);
-  tft.println("Free storage:");
-  tft.setCursor(10, 80);
-  tft.println("Used storage:");
-  tft.setCursor(10, 90);
-  tft.println("Saved signals:");
-  tft.setCursor(10, 100);
-  tft.println("Built-in signals:");
-  tft.setCursor(10, 110);
-  tft.println("Images: ");
-  */
+
+  // Storage header
+  tft.setCursor(5, 72);
+  tft.println("Storage");
+  tft.drawFastHLine(0, yPos - 12, 240, currentTheme.primary);
+  tft.drawFastHLine(0, yPos - 10, 240, currentTheme.primary);
+
+  // Available storage
+  tft.setTextSize(2);
+  tft.setCursor(10, yPos);
+  tft.print("Full: ");
+  tft.println(formatBytes(totalBytes));
+  yPos += 20;
+
+  // Free storage
+  tft.setCursor(10, yPos);
+  tft.print("Free: ");
+  tft.println(formatBytes(freeBytes));
+  yPos += 20;
+
+  // Used storage
+  tft.setCursor(10, yPos);
+  tft.print("Used: ");
+  tft.println(formatBytes(usedBytes));
+  yPos += 40;
+
+  // Files
+  tft.setTextSize(3);
+  tft.setCursor(5, yPos);
+  tft.println("Files");
+  tft.drawFastHLine(0, yPos + 26, 240, currentTheme.primary);
+  tft.drawFastHLine(0, yPos + 28, 240, currentTheme.primary);
+  yPos += 40;
+
+  // Display file counts
+  tft.setTextSize(2);
+  tft.setCursor(10, yPos);
+  tft.print("Images: ");
+  tft.println(imageCount);
+  yPos += 20;
+
+  tft.setCursor(10, yPos);
+  tft.print("Saved signals: ");
+  tft.println(savedSignalsCount);
+  yPos += 20;
+
+  tft.setCursor(10, yPos);
+  tft.print("Built-in signals:");
+  tft.println(builtInSignalsCount);
+}
+
+String formatBytes(uint64_t bytes) {
+  if (bytes < 1024 * 1024 * 1024) {  // Less than 1 GB
+    return String(bytes / (1024.0 * 1024.0), 1) + " MB";
+  } else {
+    return String(bytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
+  }
+}
+
+// Helper function to count files in a directory
+int countFilesInDirectory(const char *directoryPath) {
+  File dir = SD.open(directoryPath);
+  int count = 0;
+
+  if (!dir) {
+    return 0;  // Directory doesn't exist
+  }
+
+  if (!dir.isDirectory()) {
+    dir.close();
+    return 0;  // Not a directory
+  }
+
+  File entry = dir.openNextFile();
+  while (entry) {
+    if (!entry.isDirectory()) {
+      count++;
+    }
+    entry.close();
+    entry = dir.openNextFile();
+  }
+
+  dir.close();
+  return count;
 }
 
 void listSDFiles() {
@@ -619,7 +706,7 @@ void setTheme(uint8_t themeIndex) {
 // Process touch for all buttons with futuristic feedback
 void processTouchButtons(int tx, int ty) {
   unsigned long currentTime = millis();
-  
+
   for (int i = 0; i < buttonCount; i++) {
     TouchButton *btn = &buttons[i];
 
