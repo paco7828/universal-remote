@@ -11,7 +11,7 @@
 1x B2B-XH-A - https://www.hestore.hu/prod_10041549.html
 1x KCD11-2P - https://www.hestore.hu/prod_10047980.html
 1x USB-C-6 pin - https://www.hestore.hu/prod_10046971.html
-2x SS14 - https://www.hestore.hu/prod_10039694.html
+2x 1N5819HW-7-F - https://www.hestore.hu/prod_10046229.html
 1x Red LED 0805 - https://www.hestore.hu/prod_10043215.html
 1x Green LED 0805 - https://www.hestore.hu/prod_10036384.html
 3x 1kR 0805 resistor - https://www.hestore.hu/prod_10031299.html
