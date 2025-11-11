@@ -29,13 +29,15 @@ constexpr uint8_t SD_CS = 3;
 constexpr uint8_t IR_TX = 0;
 constexpr uint8_t IR_RX = 1;
 
+constexpr int MAX_SAVED_SIGNAL_CHARS = 15;
+
 // ===================================================================================
 // ================================= STRUCTS =========================================
 // ===================================================================================
 
 // IR Signal structure for SD card storage
 struct IRSignal {
-  char name[11];
+  char name[MAX_SAVED_SIGNAL_CHARS + 1];
   uint16_t rawData[200];
   uint8_t rawDataLen;
 } __attribute__((packed));
@@ -66,6 +68,12 @@ struct ThemeColors {
   uint16_t darkest;
 };
 
+struct HardcodedBrand {
+  const char *brandName;
+  const IRCode *codes;
+  uint8_t codesLength;
+};
+
 uint8_t activeBtnIndex = 0;
 const IRCode *currentBrandCodes = nullptr;
 uint8_t currentBrandCodesLength = 0;
@@ -79,6 +87,19 @@ int sdScrollOffset = 0;      // Scroll position
 bool onSDFiles = false;      // Track if we're in file browser
 String currentPath = "/";    // Current directory path
 int sdMaxVisible = 7;        // Number of files visible at once
+
+String builtInBrands[20];              // Array to store brand folder names
+int builtInBrandCount = 0;             // Total number of brand folders
+int builtInBrandHighlightedIndex = 0;  // Currently highlighted brand
+int builtInBrandScrollOffset = 0;      // Scroll position for brands
+bool onBuiltInBrands = false;          // Track if we're in built-in brands browser
+
+String builtInSignals[20];              // Array to store signal files in selected brand
+int builtInSignalCount = 0;             // Total number of signals in brand
+int builtInSignalHighlightedIndex = 0;  // Currently highlighted signal
+int builtInSignalScrollOffset = 0;      // Scroll position for signals
+bool onBuiltInSignals = false;          // Track if we're in built-in signals browser
+String currentBrandPath = "";           // Current brand folder path
 
 // ===================================================================================
 // ================================== THEMES =========================================
@@ -139,13 +160,7 @@ void drawKeyboard();
 void processKeyboardInput();
 
 // Projector brands
-void projectorBrands();
-void drawProjectorOptions(uint8_t brandIndex, const char *titleName, uint8_t titleXValue);
-void epsonOptions();
-void acerOptions();
-void benqOptions();
-void necOptions();
-void panasonicOptions();
+void builtInSignalsBrowser();
 
 // IR Signal functions
 void captureSignal();
@@ -178,15 +193,14 @@ void setThemeFuturisticPurple();
 // Menu options (first glance)
 const Option MENU_OPTIONS[] = {
   { "Signal options", signalOptions },
-  { "Projector brands", projectorBrands },
+  { "Built-in signals", builtInSignalsBrowser },
   { "SD Card options", sdData },
   { "Change theme", themeOptions }
 };
 
-// Menu options (without SD card option)
 const Option MENU_OPTIONS_NO_SD[] = {
   { "Signal options", signalOptions },
-  { "Projector brands", projectorBrands },
+  { "Built-in signals", builtInSignalsBrowser },
   { "Change theme", themeOptions }
 };
 
@@ -201,16 +215,6 @@ const Option TRANSMIT_OPTIONS[] = {
   { "Saved signals", listSavedSignals },
   { "Favorites", listFavoriteSignals },
   { "Back", signalOptions }
-};
-
-// Projector brands
-const Option PROJECTOR_BRANDS[] = {
-  { "EPSON", epsonOptions },
-  { "ACER", acerOptions },
-  { "BENQ", benqOptions },
-  { "NEC", necOptions },
-  { "PANASONIC", panasonicOptions },
-  { "Back", drawMenuUI }
 };
 
 // SD Card
@@ -233,6 +237,18 @@ const Option THEME_OPTIONS[] = {
   { "Futuristic Purple", setThemeFuturisticPurple },
   { "Back", drawMenuUI }
 };
+
+// Hardcoded signals
+const HardcodedBrand hardcodedBrands[] = {
+  { "EPSON", EPSON_CODES, EPSON_CODES_LENGTH },
+  { "LED_STRIP", LED_STRIP_CODES, LED_STRIP_CODES_LENGTH },
+  { "ACER", ACER_CODES, ACER_CODES_LENGTH },
+  { "BENQ", BENQ_CODES, BENQ_CODES_LENGTH },
+  { "NEC", NEC_CODES, NEC_CODES_LENGTH },
+  { "PANASONIC", PANASONIC_CODES, PANASONIC_CODES_LENGTH }
+};
+
+const uint8_t hardcodedBrandsLength = sizeof(hardcodedBrands) / sizeof(hardcodedBrands[0]);
 
 // ===================================================================================
 // ============================= INITIALIZATION ======================================
@@ -278,7 +294,7 @@ const char *const alphabet[29] = {
 
 int cursorRow = 0;
 int cursorCol = 0;
-char outputText[11] = "";
+char outputText[MAX_SAVED_SIGNAL_CHARS + 1] = "";
 bool onKeyboard = false;
 
 // Signal list variables
@@ -579,10 +595,12 @@ void listSavedSignals() {
 
   // Scroll indicators
   if (scrollOffset > 0) {
-    tft.fillTriangle(120, 65, 115, 70, 125, 70, currentTheme.primary);
+    // Top
+    tft.fillTriangle(225, 85, 220, 90, 230, 90, ILI9341_WHITE);
   }
   if (scrollOffset + maxVisible < signalCount) {
-    tft.fillTriangle(120, 225, 115, 220, 125, 220, ILI9341_WHITE);
+    // Bottom
+    tft.fillTriangle(225, 225, 220, 220, 230, 220, ILI9341_WHITE);
   }
 
   // Create navigation buttons - positioned higher to avoid footer
@@ -883,7 +901,7 @@ void keyboardButtonPressed() {
     if (len > 0) outputText[len - 1] = '\0';
 
     // Update display with new positioning
-    tft.fillRect(5, 80, 235, 20, ILI9341_BLACK);
+    tft.fillRect(5, 80, 230, 20, ILI9341_BLACK);
     tft.setTextSize(1);
     tft.setTextColor(currentTheme.primary);
     tft.setCursor(5, 80);
@@ -892,12 +910,12 @@ void keyboardButtonPressed() {
   } else if (selectedChar == "_") {
     // Space - REPLACE WITH HYPHEN
     int len = strlen(outputText);
-    if (len < 10) {
+    if (len < MAX_SAVED_SIGNAL_CHARS) {
       outputText[len] = '-';  // Use hyphen instead of space
       outputText[len + 1] = '\0';
 
       // Update display with new positioning
-      tft.fillRect(5, 80, 235, 20, ILI9341_BLACK);
+      tft.fillRect(5, 80, 230, 20, ILI9341_BLACK);
       tft.setTextSize(1);
       tft.setTextColor(currentTheme.primary);
       tft.setCursor(5, 80);
@@ -908,8 +926,8 @@ void keyboardButtonPressed() {
     // Save
     if (strlen(outputText) > 0) {
       IRSignal signal;
-      strncpy(signal.name, outputText, 10);
-      signal.name[10] = '\0';
+      strncpy(signal.name, outputText, MAX_SAVED_SIGNAL_CHARS);
+      signal.name[MAX_SAVED_SIGNAL_CHARS] = '\0';
       memcpy(signal.rawData, currentRawData, sizeof(signal.rawData));
       signal.rawDataLen = currentRawDataLen;
       saveSignalToSD(signal);
@@ -917,7 +935,7 @@ void keyboardButtonPressed() {
       tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
       tft.setTextSize(2);
       tft.setTextColor(currentTheme.primary);
-      tft.setCursor(75, 150);
+      tft.setCursor(80, 150);
       tft.println("Saved!");
       delay(2000);
 
@@ -930,12 +948,12 @@ void keyboardButtonPressed() {
   } else {
     // Regular character
     int len = strlen(outputText);
-    if (len < 10) {
+    if (len < MAX_SAVED_SIGNAL_CHARS) {
       outputText[len] = selectedChar[0];
       outputText[len + 1] = '\0';
 
       // Update display with new positioning
-      tft.fillRect(5, 80, 235, 20, ILI9341_BLACK);
+      tft.fillRect(5, 80, 230, 20, ILI9341_BLACK);
       tft.setTextSize(1);
       tft.setTextColor(currentTheme.primary);
       tft.setCursor(5, 80);
@@ -952,182 +970,246 @@ void keyboardButtonPressed() {
   Serial.println(selectedChar);
 }
 
-void projectorBrands() {
+void listBuiltInSignals() {
   buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  onBuiltInSignals = true;
+  onBuiltInBrands = false;
+  builtInSignalCount = 0;
+  // Don't reset navigation state here - let it persist for up/down navigation
 
-  // 3x2 grid
-  int btnWidth = 115;
-  int btnHeight = 40;
-  int spacing = 5;
-  int startX = (240 - (btnWidth * 2 + spacing)) / 2;
-  int startY = 120;
-
-  int buttonIndex = 0;
-  for (int row = 0; row < 3 && buttonIndex < 6; row++) {
-    for (int col = 0; col < 2 && buttonIndex < 6; col++) {
-      int x = startX + col * (btnWidth + spacing);
-      int y = startY + row * (btnHeight + spacing);
-
-      bool isBack = (buttonIndex == 5 && strcmp(PROJECTOR_BRANDS[buttonIndex].name, "Back") == 0);
-
-      createTouchBox(x, y, btnWidth, btnHeight,
-                     currentTheme.primary, currentTheme.primary,
-                     PROJECTOR_BRANDS[buttonIndex].name, PROJECTOR_BRANDS[buttonIndex].callback, isBack);
-
-      buttonIndex++;
-    }
-  }
-
-  drawHeaderFooter();
-  drawTitle("Projector brands", 70);
-}
-
-void drawProjectorOptions(uint8_t brandIndex, const char *titleName, uint8_t titleXValue) {
-  const IRCode *selectedArr = nullptr;
-  uint8_t selectedArrLength = 0;
-
-  // Select array by index
-  switch (brandIndex) {
-    case 0:
-      currentBrandCodes = EPSON_CODES;
-      currentBrandCodesLength = EPSON_CODES_LENGTH;
-      break;
-    case 1:
-      currentBrandCodes = ACER_CODES;
-      currentBrandCodesLength = ACER_CODES_LENGTH;
-      break;
-    case 2:
-      currentBrandCodes = BENQ_CODES;
-      currentBrandCodesLength = BENQ_CODES_LENGTH;
-      break;
-    case 3:
-      currentBrandCodes = NEC_CODES;
-      currentBrandCodesLength = NEC_CODES_LENGTH;
-      break;
-    case 4:
-      currentBrandCodes = PANASONIC_CODES;
-      currentBrandCodesLength = PANASONIC_CODES_LENGTH;
-      break;
-    default:
-      drawMenuUI();
-      return;
-  }
-
-  buttonCount = 0;
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
   drawHeaderFooter();
 
-  // Create buttons for each IR code option
-  int startY = 70;  // Start below the top title area
-  int btnHeight = 40;
-  int spacing = 5;
-  int maxVisibleButtons = 5;  // Maximum buttons we can fit without overlapping
-
-  // FIX: Cast to int to resolve type mismatch
-  int buttonsToShow = min((int)currentBrandCodesLength, maxVisibleButtons);
-
-  for (int i = 0; i < buttonsToShow; i++) {
-    int yPos = startY + (i * (btnHeight + spacing));
-
-    createTouchBox(10, yPos, 220, btnHeight,
-                   currentTheme.primary, currentTheme.primary,
-                   currentBrandCodes[i].codeName,
-                   sendProjectorSignalByIndex);
-  }
-
-  // Position back button at the bottom, avoiding overlap with footer title
-  // Footer title is at y=305, so place back button above it with proper spacing
-  int backButtonY = 265;  // Position above the footer title area
-  int backButtonHeight = 35;
-
-  // Clear the area where back button will be to avoid text overlap
-  tft.fillRect(60, backButtonY, 120, backButtonHeight, ILI9341_BLACK);
-
-  createTouchBox(60, backButtonY, 120, backButtonHeight,
-                 currentTheme.secondary, currentTheme.secondary,
-                 "Back", projectorBrands, true);
-
-  String fullTitle = "Projector > " + String(titleName);
-  drawTitle(fullTitle.c_str(), titleXValue);
-}
-
-void sendProjectorSignal(const IRCode &irCode) {
-  // Serial log what we're sending
-  Serial.print("Sending projector signal: ");
-  Serial.println(irCode.codeName);
-  Serial.print("Signal data: ");
-
-  // Log the raw signal data
-  for (size_t i = 0; i < sizeof(irCode.codeArray) / sizeof(irCode.codeArray[0]); i++) {
-    if (irCode.codeArray[i] == 0 && i > 10) break;  // Stop at first significant zero
-    Serial.print(irCode.codeArray[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
-
-  // Calculate the actual length of the signal array
-  size_t signalLength = 0;
-  for (size_t i = 0; i < sizeof(irCode.codeArray) / sizeof(irCode.codeArray[0]); i++) {
-    if (irCode.codeArray[i] == 0 && i > 10) break;
-    signalLength++;
-  }
-
-  // Send the IR signal immediately
-  IrSender.sendRaw(irCode.codeArray, signalLength, 38);  // 38kHz frequency
-
-  Serial.println("Signal sent successfully!");
-}
-
-void sendProjectorSignalByIndex() {
-  if (currentBrandCodes != nullptr && activeBtnIndex < currentBrandCodesLength) {
-    const IRCode &irCode = currentBrandCodes[activeBtnIndex];
-
-    // Serial log what we're sending
-    Serial.print("Sending projector signal: ");
-    Serial.println(irCode.codeName);
-    Serial.print("Signal data: ");
-
-    // Log the raw signal data
-    for (size_t i = 0; i < sizeof(irCode.codeArray) / sizeof(irCode.codeArray[0]); i++) {
-      if (irCode.codeArray[i] == 0 && i > 10) break;  // Stop at first significant zero
-      Serial.print(irCode.codeArray[i], HEX);
-      Serial.print(" ");
+  // Find the selected brand in hardcoded array
+  int brandIndex = -1;
+  for (int i = 0; i < hardcodedBrandsLength; i++) {
+    if (String(hardcodedBrands[i].brandName) == currentBrandPath) {
+      brandIndex = i;
+      break;
     }
-    Serial.println();
+  }
 
-    // Calculate the actual length of the signal array
-    size_t signalLength = 0;
-    for (size_t i = 0; i < sizeof(irCode.codeArray) / sizeof(irCode.codeArray[0]); i++) {
-      if (irCode.codeArray[i] == 0 && i > 10) break;
-      signalLength++;
+  if (brandIndex == -1) {
+    tft.setTextSize(2);
+    tft.setTextColor(currentTheme.primary);
+    tft.setCursor(20, 120);
+    tft.println("Brand not");
+    tft.setCursor(40, 140);
+    tft.println("found!");
+
+    drawBackBtn(60, 200, 120, 40, builtInSignalsBrowser);
+    drawTitle("Brand signals", 75);
+    return;
+  }
+
+  // Load signals from hardcoded brand
+  const IRCode *brandCodes = hardcodedBrands[brandIndex].codes;
+  builtInSignalCount = hardcodedBrands[brandIndex].codesLength;
+
+  if (builtInSignalCount == 0) {
+    tft.setTextSize(2);
+    tft.setTextColor(currentTheme.primary);
+    tft.setCursor(30, 120);
+    tft.println("No signals");
+    tft.setCursor(50, 140);
+    tft.println("in brand!");
+
+    drawBackBtn(60, 200, 120, 40, builtInSignalsBrowser);
+    drawTitle("Brand signals", 75);
+    return;
+  }
+
+  // Display signals - 5 visible at a time
+  int maxVisible = 5;
+  int yPos = 70;
+  int lineHeight = 30;
+
+  for (int i = builtInSignalScrollOffset; i < min(builtInSignalScrollOffset + maxVisible, builtInSignalCount); i++) {
+    int highlightY = yPos;
+    int highlightHeight = 25;
+
+    if (i == builtInSignalHighlightedIndex) {
+      tft.fillRect(5, highlightY, 230, highlightHeight, currentTheme.primary);
+      tft.setTextColor(ILI9341_BLACK);
+    } else {
+      tft.fillRect(5, highlightY, 230, highlightHeight, ILI9341_BLACK);
+      tft.setTextColor(ILI9341_WHITE);
     }
 
-    // Send the IR signal immediately
-    IrSender.sendRaw(irCode.codeArray, signalLength, 38);  // 38kHz frequency
-
-    Serial.println("Signal sent successfully!");
+    tft.setTextSize(2);
+    tft.setCursor(10, yPos + 5);
+    tft.println(brandCodes[i].codeName);
+    yPos += lineHeight;
   }
+
+  // Scroll indicators - RIGHT SIDE, WHITE
+  if (builtInSignalScrollOffset > 0) {
+    tft.fillTriangle(225, 85, 220, 90, 230, 90, ILI9341_WHITE);
+  }
+  if (builtInSignalScrollOffset + maxVisible < builtInSignalCount) {
+    tft.fillTriangle(225, 225, 220, 220, 230, 220, ILI9341_WHITE);
+  }
+
+  // Navigation buttons
+  createTouchBox(10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
+    if (builtInSignalHighlightedIndex > 0) {
+      builtInSignalHighlightedIndex--;
+      if (builtInSignalHighlightedIndex < builtInSignalScrollOffset) {
+        builtInSignalScrollOffset = builtInSignalHighlightedIndex;
+      }
+      listBuiltInSignals();
+    }
+  });
+
+  createTouchBox(85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
+    if (builtInSignalHighlightedIndex < builtInSignalCount - 1) {
+      builtInSignalHighlightedIndex++;
+      if (builtInSignalHighlightedIndex >= builtInSignalScrollOffset + 5) {
+        builtInSignalScrollOffset = builtInSignalHighlightedIndex - 5 + 1;
+      }
+      listBuiltInSignals();
+    }
+  });
+
+  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Send", []() {
+    // Find the selected brand and signal
+    int brandIndex = -1;
+    for (int i = 0; i < hardcodedBrandsLength; i++) {
+      if (String(hardcodedBrands[i].brandName) == currentBrandPath) {
+        brandIndex = i;
+        break;
+      }
+    }
+
+    if (brandIndex != -1) {
+      const IRCode *selectedCode = &hardcodedBrands[brandIndex].codes[builtInSignalHighlightedIndex];
+
+      // Convert IRCode to IRSignal and transmit
+      IRSignal signal;
+      strncpy(signal.name, selectedCode->codeName, 10);
+      signal.rawDataLen = 0;
+
+      // Calculate the actual length of the signal data (until we hit 0)
+      for (int i = 0; i < 150; i++) {
+        if (selectedCode->codeArray[i] == 0 && i > 10) {  // Allow some zeros but not at start
+          break;
+        }
+        signal.rawData[i] = selectedCode->codeArray[i];
+        signal.rawDataLen++;
+      }
+
+      transmitSignal(signal);
+    }
+  });
+
+  // Back button
+  tft.fillRect(10, 270, 220, 25, ILI9341_BLACK);
+  createTouchBox(
+    10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", []() {
+      onBuiltInSignals = false;
+      builtInSignalsBrowser();
+    },
+    true);
+
+  // Display brand name for title
+  String title = currentBrandPath + " signals";
+  drawTitle(title.c_str(), 70);
 }
 
-void epsonOptions() {
-  drawProjectorOptions(0, "EPSON", 65);
-}
+void builtInSignalsBrowser() {
+  buttonCount = 0;
+  onBuiltInBrands = true;
+  builtInBrandCount = 0;
+  // Don't reset navigation state here - let it persist for up/down navigation
 
-void acerOptions() {
-  drawProjectorOptions(1, "ACER", 70);
-}
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
 
-void benqOptions() {
-  drawProjectorOptions(2, "BENQ", 70);
-}
+  // Load brands from hardcoded array (always available)
+  builtInBrandCount = hardcodedBrandsLength;
+  for (int i = 0; i < hardcodedBrandsLength; i++) {
+    builtInBrands[i] = hardcodedBrands[i].brandName;
+  }
 
-void necOptions() {
-  drawProjectorOptions(3, "NEC", 75);
-}
+  if (builtInBrandCount == 0) {
+    tft.setTextSize(2);
+    tft.setTextColor(currentTheme.primary);
+    tft.setCursor(30, 120);
+    tft.println("No brands");
+    tft.setCursor(50, 140);
+    tft.println("found!");
 
-void panasonicOptions() {
-  drawProjectorOptions(4, "PANASONIC", 55);
+    drawBackBtn(60, 200, 120, 40, drawMenuUI);
+    drawTitle("Built-in signals", 70);
+    return;
+  }
+
+  // Display brands - 5 visible at a time
+  int maxVisible = 5;
+  int yPos = 70;
+  int lineHeight = 30;
+
+  for (int i = builtInBrandScrollOffset; i < min(builtInBrandScrollOffset + maxVisible, builtInBrandCount); i++) {
+    int highlightY = yPos;
+    int highlightHeight = 25;
+
+    if (i == builtInBrandHighlightedIndex) {
+      tft.fillRect(5, highlightY, 230, highlightHeight, currentTheme.primary);
+      tft.setTextColor(ILI9341_BLACK);
+    } else {
+      tft.fillRect(5, highlightY, 230, highlightHeight, ILI9341_BLACK);
+      tft.setTextColor(ILI9341_WHITE);
+    }
+
+    tft.setTextSize(2);
+    tft.setCursor(10, yPos + 5);
+    tft.println(builtInBrands[i]);
+    yPos += lineHeight;
+  }
+
+  // Scroll indicators - RIGHT SIDE, WHITE
+  if (builtInBrandScrollOffset > 0) {
+    tft.fillTriangle(225, 85, 220, 90, 230, 90, ILI9341_WHITE);
+  }
+  if (builtInBrandScrollOffset + maxVisible < builtInBrandCount) {
+    tft.fillTriangle(225, 225, 220, 220, 230, 220, ILI9341_WHITE);
+  }
+
+  // Navigation buttons
+  createTouchBox(10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
+    if (builtInBrandHighlightedIndex > 0) {
+      builtInBrandHighlightedIndex--;
+      if (builtInBrandHighlightedIndex < builtInBrandScrollOffset) {
+        builtInBrandScrollOffset = builtInBrandHighlightedIndex;
+      }
+      builtInSignalsBrowser();
+    }
+  });
+
+  createTouchBox(85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
+    if (builtInBrandHighlightedIndex < builtInBrandCount - 1) {
+      builtInBrandHighlightedIndex++;
+      if (builtInBrandHighlightedIndex >= builtInBrandScrollOffset + 5) {
+        builtInBrandScrollOffset = builtInBrandHighlightedIndex - 5 + 1;
+      }
+      builtInSignalsBrowser();
+    }
+  });
+
+  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Open", []() {
+    // Store the selected brand name (no path needed for hardcoded signals)
+    currentBrandPath = builtInBrands[builtInBrandHighlightedIndex];
+    // Reset signal navigation when opening a new brand
+    builtInSignalHighlightedIndex = 0;
+    builtInSignalScrollOffset = 0;
+    listBuiltInSignals();
+  });
+
+  // Back button
+  tft.fillRect(10, 270, 220, 25, ILI9341_BLACK);
+  createTouchBox(10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", drawMenuUI, true);
+
+  drawTitle("Built-in signals", 70);
 }
 
 void sdData() {
@@ -1407,12 +1489,14 @@ void drawSDFileBrowser() {
     yPos += lineHeight;
   }
 
-  // Scroll indicators - adjusted positions
+  // Scroll indicators
   if (sdScrollOffset > 0) {
-    tft.fillTriangle(120, 75, 115, 80, 125, 80, currentTheme.primary);
+    // Top
+    tft.fillTriangle(225, 85, 220, 90, 230, 90, ILI9341_WHITE);
   }
   if (sdScrollOffset + sdMaxVisible < sdFileCount) {
-    tft.fillTriangle(120, 240, 115, 235, 125, 235, ILI9341_WHITE);
+    // Bottom
+    tft.fillTriangle(225, 240, 220, 235, 230, 235, ILI9341_WHITE);
   }
 
   // Navigation buttons with 5px gap from back button
@@ -1556,7 +1640,7 @@ void formatSD() {
     tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
 
     // Skip protected and built-in folders
-    if (entryName == "System Volume Information" || entryName == "built-in-signals" || entryName == "/built-in-signals") {
+    if (entryName == "System Volume Information" || entryName == "built-in-signals") {
       tft.setCursor(10, 130);
       tft.setTextColor(currentTheme.primary);
       tft.print("Skipping:");
@@ -1564,7 +1648,7 @@ void formatSD() {
       tft.setTextColor(ILI9341_WHITE);
       tft.println(entryName);
       entry = root.openNextFile();
-      delay(2000);
+      delay(1000);  // Reduced delay for better UX
       continue;
     }
 
@@ -1572,7 +1656,7 @@ void formatSD() {
 
     tft.setCursor(10, 130);
     tft.setTextColor(currentTheme.primary);
-    tft.print("Processing:");
+    tft.print("Deleting:");
     tft.setCursor(0, 160);
     tft.setTextColor(ILI9341_WHITE);
     tft.println(entryName);
@@ -1586,20 +1670,20 @@ void formatSD() {
 
     if (success) {
       tft.setCursor(10, 130);
-      tft.setTextColor(currentTheme.primary);
+      tft.setTextColor(0x07E0);  // Green for success
       tft.println("Deleted:");
       tft.setCursor(0, 160);
       tft.setTextColor(ILI9341_WHITE);
       tft.println(entryName);
-      delay(2000);
+      delay(1000);  // Reduced delay
     } else {
       tft.setCursor(10, 130);
-      tft.setTextColor(currentTheme.primary);
-      tft.println("Failed to delete:");
+      tft.setTextColor(0xF800);  // Red for failure
+      tft.println("Failed:");
       tft.setCursor(0, 160);
       tft.setTextColor(ILI9341_WHITE);
       tft.println(entryName);
-      delay(2000);
+      delay(1000);  // Reduced delay
     }
 
     entry = root.openNextFile();
@@ -1608,11 +1692,24 @@ void formatSD() {
   root.close();
 
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
-  tft.setTextColor(currentTheme.primary);
+  tft.setTextColor(0x07E0);  // Green for success
   tft.setTextSize(2);
   tft.setCursor(20, 140);
   tft.println("Formatting done!");
+
+  // Show what was preserved
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(30, 170);
+  tft.println("Preserved: built-in-signals");
+
   delay(2000);
+
+  // Recreate the saved-signals directory since we deleted it
+  if (!SD.exists("/saved-signals")) {
+    SD.mkdir("/saved-signals");
+  }
+
   drawMenuUI();
 }
 
