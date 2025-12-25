@@ -80,26 +80,39 @@ uint8_t currentBrandCodesLength = 0;
 int currentCodeIndex = 0;
 
 // File browser variables
-String sdFiles[50];          // Array to store file names
-int sdFileCount = 0;         // Total number of files
-int sdHighlightedIndex = 0;  // Currently highlighted file
-int sdScrollOffset = 0;      // Scroll position
-bool onSDFiles = false;      // Track if we're in file browser
-String currentPath = "/";    // Current directory path
-int sdMaxVisible = 7;        // Number of files visible at once
+String sdFiles[50];
+int sdFileCount = 0;
+int sdHighlightedIndex = 0;
+int sdScrollOffset = 0;
+bool onSDFiles = false;
+String currentPath = "/";
+int sdMaxVisible = 7;
 
-String builtInBrands[20];              // Array to store brand folder names
-int builtInBrandCount = 0;             // Total number of brand folders
-int builtInBrandHighlightedIndex = 0;  // Currently highlighted brand
-int builtInBrandScrollOffset = 0;      // Scroll position for brands
-bool onBuiltInBrands = false;          // Track if we're in built-in brands browser
+String builtInBrands[20];
+int builtInBrandCount = 0;
+int builtInBrandHighlightedIndex = 0;
+int builtInBrandScrollOffset = 0;
+bool onBuiltInBrands = false;
 
-String builtInSignals[20];              // Array to store signal files in selected brand
-int builtInSignalCount = 0;             // Total number of signals in brand
-int builtInSignalHighlightedIndex = 0;  // Currently highlighted signal
-int builtInSignalScrollOffset = 0;      // Scroll position for signals
-bool onBuiltInSignals = false;          // Track if we're in built-in signals browser
-String currentBrandPath = "";           // Current brand folder path
+String builtInSignals[20];
+int builtInSignalCount = 0;
+int builtInSignalHighlightedIndex = 0;
+int builtInSignalScrollOffset = 0;
+bool onBuiltInSignals = false;
+String currentBrandPath = "";
+
+// Signal grouping
+String savedSignalGroups[20];
+int savedSignalGroupCount = 0;
+int savedSignalGroupHighlightedIndex = 0;
+int savedSignalGroupScrollOffset = 0;
+bool onSavedSignalGroups = false;
+String currentSavedGroup = "";
+
+String groupedSignalFiles[20];
+int groupedSignalCount = 0;
+int groupedSignalHighlightedIndex = 0;
+int groupedSignalScrollOffset = 0;
 
 // ===================================================================================
 // ================================== THEMES =========================================
@@ -178,6 +191,8 @@ void listSDFiles();
 void sdFormatOptions();
 bool deleteDirectory(const char *path);
 void formatSD();
+String extractPrefix(String filename);
+void listGroupedSignals();
 
 // Theme
 void themeOptions();
@@ -520,13 +535,14 @@ void transmitOptions() {
 
 void listSavedSignals() {
   buttonCount = 0;
-  onSavedSignals = true;
-  signalCount = 0;
+  onSavedSignalGroups = true;
+  onSavedSignals = false;
+  savedSignalGroupCount = 0;
 
   tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
   drawHeaderFooter();
 
-  // Load signal files from SD card
+  // Load signal files and extract unique prefixes
   File dir = SD.open("/saved-signals");
   if (!dir) {
     tft.setTextSize(2);
@@ -536,24 +552,41 @@ void listSavedSignals() {
     tft.setCursor(40, 140);
     tft.println("found!");
 
-    // Back button higher up
     drawBackBtn(60, 200, 120, 40, signalOptions);
     drawTitle("Transmit > Saved", 70);
     return;
   }
 
+  // Collect all unique prefixes
+  String allPrefixes[50];
+  int prefixCount = 0;
+
   File entry = dir.openNextFile();
-  while (entry && signalCount < 20) {
+  while (entry && prefixCount < 50) {
     if (!entry.isDirectory()) {
-      signalFiles[signalCount] = String(entry.name());
-      signalCount++;
+      String filename = String(entry.name());
+      String prefix = extractPrefix(filename);
+
+      // Check if prefix already exists
+      bool exists = false;
+      for (int i = 0; i < savedSignalGroupCount; i++) {
+        if (savedSignalGroups[i] == prefix) {
+          exists = true;
+          break;
+        }
+      }
+
+      if (!exists && savedSignalGroupCount < 20) {
+        savedSignalGroups[savedSignalGroupCount] = prefix;
+        savedSignalGroupCount++;
+      }
     }
     entry.close();
     entry = dir.openNextFile();
   }
   dir.close();
 
-  if (signalCount == 0) {
+  if (savedSignalGroupCount == 0) {
     tft.setTextSize(2);
     tft.setTextColor(currentTheme.primary);
     tft.setCursor(60, 150);
@@ -561,22 +594,21 @@ void listSavedSignals() {
     tft.setCursor(85, 170);
     tft.println("saved!");
 
-    // Back button higher up
     drawBackBtn(60, 200, 120, 40, signalOptions);
     drawTitle("Transmit > Saved", 70);
     return;
   }
 
-  // Display signals - reduced to 5 visible at a time
+  // Display groups
   int maxVisible = 5;
   int yPos = 70;
-  int lineHeight = 30;  // Reduced height for less tall highlights
+  int lineHeight = 30;
 
-  for (int i = scrollOffset; i < min(scrollOffset + maxVisible, signalCount); i++) {
+  for (int i = savedSignalGroupScrollOffset; i < min(savedSignalGroupScrollOffset + maxVisible, savedSignalGroupCount); i++) {
     int highlightY = yPos;
-    int highlightHeight = 25;  // Reduced from lineHeight
+    int highlightHeight = 25;
 
-    if (i == highlightedIndex) {
+    if (i == savedSignalGroupHighlightedIndex) {
       tft.fillRect(5, highlightY, 230, highlightHeight, currentTheme.primary);
       tft.setTextColor(ILI9341_BLACK);
     } else {
@@ -585,60 +617,48 @@ void listSavedSignals() {
     }
 
     tft.setTextSize(2);
-    tft.setCursor(10, yPos + 5);  // Adjusted text position within highlight
-    // Remove .bin extension for display
-    String displayName = signalFiles[i];
-    displayName.replace(".bin", "");
-    tft.println(displayName);
+    tft.setCursor(10, yPos + 5);
+    tft.println(savedSignalGroups[i]);
     yPos += lineHeight;
   }
 
   // Scroll indicators
-  if (scrollOffset > 0) {
-    // Top
+  if (savedSignalGroupScrollOffset > 0) {
     tft.fillTriangle(225, 85, 220, 90, 230, 90, ILI9341_WHITE);
   }
-  if (scrollOffset + maxVisible < signalCount) {
-    // Bottom
+  if (savedSignalGroupScrollOffset + maxVisible < savedSignalGroupCount) {
     tft.fillTriangle(225, 225, 220, 220, 230, 220, ILI9341_WHITE);
   }
 
-  // Create navigation buttons - positioned higher to avoid footer
+  // Navigation buttons
   createTouchBox(10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
-    if (highlightedIndex > 0) {
-      highlightedIndex--;
-      if (highlightedIndex < scrollOffset) {
-        scrollOffset = highlightedIndex;
+    if (savedSignalGroupHighlightedIndex > 0) {
+      savedSignalGroupHighlightedIndex--;
+      if (savedSignalGroupHighlightedIndex < savedSignalGroupScrollOffset) {
+        savedSignalGroupScrollOffset = savedSignalGroupHighlightedIndex;
       }
       listSavedSignals();
     }
   });
 
   createTouchBox(85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
-    if (highlightedIndex < signalCount - 1) {
-      highlightedIndex++;
-      // Use fixed value 5 for maxVisible
-      if (highlightedIndex >= scrollOffset + 5) {
-        scrollOffset = highlightedIndex - 5 + 1;
+    if (savedSignalGroupHighlightedIndex < savedSignalGroupCount - 1) {
+      savedSignalGroupHighlightedIndex++;
+      if (savedSignalGroupHighlightedIndex >= savedSignalGroupScrollOffset + 5) {
+        savedSignalGroupScrollOffset = savedSignalGroupHighlightedIndex - 5 + 1;
       }
       listSavedSignals();
     }
   });
 
-  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Send", []() {
-    // Load and transmit the selected signal WITHOUT refreshing display
-    String filepath = "/saved-signals/" + signalFiles[highlightedIndex];
-    File file = SD.open(filepath.c_str(), FILE_READ);
-    if (file) {
-      IRSignal signal;
-      file.read((uint8_t *)&signal, sizeof(IRSignal));
-      file.close();
-
-      transmitSignal(signal);
-    }
+  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Open", []() {
+    currentSavedGroup = savedSignalGroups[savedSignalGroupHighlightedIndex];
+    groupedSignalHighlightedIndex = 0;
+    groupedSignalScrollOffset = 0;
+    listGroupedSignals();
   });
 
-  //Back button below the navigation buttons
+  // Back button
   tft.fillRect(10, 270, 220, 25, ILI9341_BLACK);
   createTouchBox(10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", signalOptions, true);
 
@@ -1713,14 +1733,168 @@ void formatSD() {
   drawMenuUI();
 }
 
-void themeOptions() {
-  createOptions(THEME_OPTIONS, 4, 10, 70);
-  drawTitle("Change theme", 85);
+String extractPrefix(String filename) {
+  // Remove .bin extension first
+  filename.replace(".bin", "");
+
+  // Find first hyphen
+  int hyphenIndex = filename.indexOf('-');
+
+  if (hyphenIndex > 0) {
+    return filename.substring(0, hyphenIndex);
+  }
+
+  // If no hyphen, return the whole filename as prefix
+  return filename;
+}
+
+void listGroupedSignals() {
+  buttonCount = 0;
+  onSavedSignals = true;
+  onSavedSignalGroups = false;
+  groupedSignalCount = 0;
+
+  tft.fillRect(0, 60, 240, 258, ILI9341_BLACK);
+  drawHeaderFooter();
+
+  // Load signals matching the current group prefix
+  File dir = SD.open("/saved-signals");
+  if (!dir) {
+    tft.setTextSize(2);
+    tft.setTextColor(currentTheme.primary);
+    tft.setCursor(20, 120);
+    tft.println("Error opening");
+    tft.setCursor(40, 140);
+    tft.println("directory!");
+
+    drawBackBtn(60, 200, 120, 40, listSavedSignals);
+    drawTitle("Group signals", 75);
+    return;
+  }
+
+  File entry = dir.openNextFile();
+  while (entry && groupedSignalCount < 20) {
+    if (!entry.isDirectory()) {
+      String filename = String(entry.name());
+      String prefix = extractPrefix(filename);
+
+      if (prefix == currentSavedGroup) {
+        groupedSignalFiles[groupedSignalCount] = filename;
+        groupedSignalCount++;
+      }
+    }
+    entry.close();
+    entry = dir.openNextFile();
+  }
+  dir.close();
+
+  if (groupedSignalCount == 0) {
+    tft.setTextSize(2);
+    tft.setTextColor(currentTheme.primary);
+    tft.setCursor(30, 120);
+    tft.println("No signals");
+    tft.setCursor(50, 140);
+    tft.println("in group!");
+
+    drawBackBtn(60, 200, 120, 40, listSavedSignals);
+    drawTitle("Group signals", 75);
+    return;
+  }
+
+  // Display signals
+  int maxVisible = 5;
+  int yPos = 70;
+  int lineHeight = 30;
+
+  for (int i = groupedSignalScrollOffset; i < min(groupedSignalScrollOffset + maxVisible, groupedSignalCount); i++) {
+    int highlightY = yPos;
+    int highlightHeight = 25;
+
+    if (i == groupedSignalHighlightedIndex) {
+      tft.fillRect(5, highlightY, 230, highlightHeight, currentTheme.primary);
+      tft.setTextColor(ILI9341_BLACK);
+    } else {
+      tft.fillRect(5, highlightY, 230, highlightHeight, ILI9341_BLACK);
+      tft.setTextColor(ILI9341_WHITE);
+    }
+
+    tft.setTextSize(2);
+    tft.setCursor(10, yPos + 5);
+    // Remove .bin extension and prefix for cleaner display
+    String displayName = groupedSignalFiles[i];
+    displayName.replace(".bin", "");
+    // Remove prefix and hyphen
+    int hyphenIndex = displayName.indexOf('-');
+    if (hyphenIndex >= 0) {
+      displayName = displayName.substring(hyphenIndex + 1);
+    }
+    tft.println(displayName);
+    yPos += lineHeight;
+  }
+
+  // Scroll indicators
+  if (groupedSignalScrollOffset > 0) {
+    tft.fillTriangle(225, 85, 220, 90, 230, 90, ILI9341_WHITE);
+  }
+  if (groupedSignalScrollOffset + maxVisible < groupedSignalCount) {
+    tft.fillTriangle(225, 225, 220, 220, 230, 220, ILI9341_WHITE);
+  }
+
+  // Navigation buttons
+  createTouchBox(10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
+    if (groupedSignalHighlightedIndex > 0) {
+      groupedSignalHighlightedIndex--;
+      if (groupedSignalHighlightedIndex < groupedSignalScrollOffset) {
+        groupedSignalScrollOffset = groupedSignalHighlightedIndex;
+      }
+      listGroupedSignals();
+    }
+  });
+
+  createTouchBox(85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
+    if (groupedSignalHighlightedIndex < groupedSignalCount - 1) {
+      groupedSignalHighlightedIndex++;
+      if (groupedSignalHighlightedIndex >= groupedSignalScrollOffset + 5) {
+        groupedSignalScrollOffset = groupedSignalHighlightedIndex - 5 + 1;
+      }
+      listGroupedSignals();
+    }
+  });
+
+  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Send", []() {
+    // Load and transmit the selected signal
+    String filepath = "/saved-signals/" + groupedSignalFiles[groupedSignalHighlightedIndex];
+    File file = SD.open(filepath.c_str(), FILE_READ);
+    if (file) {
+      IRSignal signal;
+      file.read((uint8_t *)&signal, sizeof(IRSignal));
+      file.close();
+
+      transmitSignal(signal);
+    }
+  });
+
+  // Back button
+  tft.fillRect(10, 270, 220, 25, ILI9341_BLACK);
+  createTouchBox(
+    10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", []() {
+      onSavedSignals = false;
+      listSavedSignals();
+    },
+    true);
+
+  String title = currentSavedGroup + " signals";
+  drawTitle(title.c_str(), 70);
 }
 
 // ===================================================================================
 // ===================================== THEMES ======================================
 // ===================================================================================
+
+void themeOptions() {
+  createOptions(THEME_OPTIONS, 4, 10, 70);
+  drawTitle("Change theme", 85);
+}
 
 void setThemeFuturisticRed() {
   setTheme(0);
