@@ -193,6 +193,7 @@ bool deleteDirectory(const char *path);
 void formatSD();
 String extractPrefix(String filename);
 void listGroupedSignals();
+void deleteSelectedFile();
 
 // Theme
 void themeOptions();
@@ -1479,8 +1480,8 @@ void drawSDFileBrowser() {
   }
 
   // Display files - use global sdMaxVisible
-  int yPos = 80;        // Adjusted starting position
-  int lineHeight = 25;  // Reduced from 30 to 25
+  int yPos = 80;
+  int lineHeight = 25;
 
   for (int i = sdScrollOffset; i < min(sdScrollOffset + sdMaxVisible, sdFileCount); i++) {
     int highlightY = yPos;
@@ -1497,11 +1498,8 @@ void drawSDFileBrowser() {
     tft.setTextSize(1);
     tft.setCursor(10, yPos + 5);
 
-    // SINGLE LINE: Show formatted name and size
     String displayName = sdFiles[i];
-
-    // Show full info but truncate if needed
-    if (displayName.length() > 35) {  // Allow more characters
+    if (displayName.length() > 35) {
       displayName = displayName.substring(0, 32) + "...";
     }
     tft.println(displayName);
@@ -1511,16 +1509,14 @@ void drawSDFileBrowser() {
 
   // Scroll indicators
   if (sdScrollOffset > 0) {
-    // Top
     tft.fillTriangle(225, 85, 220, 90, 230, 90, ILI9341_WHITE);
   }
   if (sdScrollOffset + sdMaxVisible < sdFileCount) {
-    // Bottom
     tft.fillTriangle(225, 240, 220, 235, 230, 235, ILI9341_WHITE);
   }
 
-  // Navigation buttons with 5px gap from back button
-  createTouchBox(10, 240, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {  // Was 245, now 240
+  // Navigation buttons
+  createTouchBox(10, 240, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
     if (sdHighlightedIndex > 0) {
       sdHighlightedIndex--;
       if (sdHighlightedIndex < sdScrollOffset) {
@@ -1530,7 +1526,7 @@ void drawSDFileBrowser() {
     }
   });
 
-  createTouchBox(85, 240, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {  // Was 245, now 240
+  createTouchBox(85, 240, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
     if (sdHighlightedIndex < sdFileCount - 1) {
       sdHighlightedIndex++;
       if (sdHighlightedIndex >= sdScrollOffset + sdMaxVisible) {
@@ -1540,10 +1536,14 @@ void drawSDFileBrowser() {
     }
   });
 
-  createTouchBox(160, 240, 70, 30, currentTheme.primary, currentTheme.primary, "Open", []() {
-    // Check if it's a directory (new format: "DIR - Dirname")
-    String selectedFile = sdFiles[sdHighlightedIndex];
-    if (selectedFile.startsWith("DIR - ")) {
+  // Check if selected item is a directory or file
+  String selectedFile = sdFiles[sdHighlightedIndex];
+  bool isDirectory = selectedFile.startsWith("DIR - ");
+
+  // Changed: Show "Del" button for files, "Open" for directories
+  if (isDirectory) {
+    createTouchBox(160, 240, 70, 30, currentTheme.primary, currentTheme.primary, "Open", []() {
+      String selectedFile = sdFiles[sdHighlightedIndex];
       String dirName = selectedFile.substring(6);  // Remove "DIR - " prefix
 
       // Update current path
@@ -1558,21 +1558,19 @@ void drawSDFileBrowser() {
       sdHighlightedIndex = 0;
       sdScrollOffset = 0;
       drawSDFileBrowser();
-    } else {
-      // It's a file - add file operations here
-      Serial.print("Selected file: ");
-      Serial.println(selectedFile);
-    }
-  });
+    });
+  } else {
+    // Show red "Del" button for files
+    createTouchBox(160, 240, 70, 30, 0xF800, ILI9341_WHITE, "Del", deleteSelectedFile);
+  }
 
-  // Back button with 5px gap from navigation buttons
+  // Back button
   const char *backLabel = "Back";
   void (*backCallback)() = sdData;
 
   if (currentPath != "/") {
     backLabel = "Up Dir";
     backCallback = []() {
-      // Go up one directory level
       int lastSlash = currentPath.lastIndexOf('/');
       if (lastSlash > 0) {
         currentPath = currentPath.substring(0, lastSlash);
@@ -1587,7 +1585,6 @@ void drawSDFileBrowser() {
     };
   }
 
-  // Back button positioned with 5px gap (240 + 30 + 5 = 275)
   createTouchBox(60, 275, 120, 25, currentTheme.secondary, currentTheme.secondary, backLabel, backCallback, true);
 
   drawTitle("SD Card > Files", 75);
@@ -1885,6 +1882,57 @@ void listGroupedSignals() {
 
   String title = currentSavedGroup + " signals";
   drawTitle(title.c_str(), 70);
+}
+
+void deleteSelectedFile() {
+  String selectedFile = sdFiles[sdHighlightedIndex];
+
+  // Only delete if it's a file (not a directory)
+  if (!selectedFile.startsWith("DIR - ")) {
+    // Extract actual filename (remove size info)
+    String actualFileName = selectedFile;
+    int dashIndex = actualFileName.lastIndexOf(" - ");
+    if (dashIndex > 0) {
+      actualFileName = actualFileName.substring(0, dashIndex);
+    }
+
+    // Build full path
+    String fullPath;
+    if (currentPath == "/") {
+      fullPath = "/" + actualFileName;
+    } else {
+      fullPath = currentPath + "/" + actualFileName;
+    }
+
+    // Delete the file
+    bool success = SD.remove(fullPath.c_str());
+
+    if (success) {
+      // Reload the file list
+      loadSDFiles(currentPath);
+
+      // Adjust highlighted index if needed
+      if (sdHighlightedIndex >= sdFileCount && sdFileCount > 0) {
+        sdHighlightedIndex = sdFileCount - 1;
+      }
+      if (sdScrollOffset > sdHighlightedIndex) {
+        sdScrollOffset = max(0, sdHighlightedIndex);
+      }
+
+      drawSDFileBrowser();
+    } else {
+      // Show error message
+      tft.fillRect(0, 60, 240, 100, ILI9341_BLACK);
+      tft.setTextSize(2);
+      tft.setTextColor(0xF800);  // Red
+      tft.setCursor(20, 100);
+      tft.println("Delete");
+      tft.setCursor(20, 120);
+      tft.println("failed!");
+      delay(1500);
+      drawSDFileBrowser();
+    }
+  }
 }
 
 // ===================================================================================
