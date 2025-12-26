@@ -29,7 +29,7 @@ constexpr uint8_t SD_CS = 3;
 constexpr uint8_t IR_TX = 0;
 constexpr uint8_t IR_RX = 1;
 
-constexpr int MAX_SAVED_SIGNAL_CHARS = 15;
+constexpr int MAX_SAVED_SIGNAL_CHARS = 25;
 
 // ===================================================================================
 // ================================= STRUCTS =========================================
@@ -80,21 +80,21 @@ uint8_t currentBrandCodesLength = 0;
 int currentCodeIndex = 0;
 
 // File browser variables
-String sdFiles[50];
+String sdFiles[500];
 int sdFileCount = 0;
 int sdHighlightedIndex = 0;
 int sdScrollOffset = 0;
 bool onSDFiles = false;
 String currentPath = "/";
-int sdMaxVisible = 7;
+int sdMaxVisible = 6;
 
-String builtInBrands[20];
+String builtInBrands[50];
 int builtInBrandCount = 0;
 int builtInBrandHighlightedIndex = 0;
 int builtInBrandScrollOffset = 0;
 bool onBuiltInBrands = false;
 
-String builtInSignals[20];
+String builtInSignals[50];
 int builtInSignalCount = 0;
 int builtInSignalHighlightedIndex = 0;
 int builtInSignalScrollOffset = 0;
@@ -102,14 +102,14 @@ bool onBuiltInSignals = false;
 String currentBrandPath = "";
 
 // Signal grouping
-String savedSignalGroups[20];
+String savedSignalGroups[50];
 int savedSignalGroupCount = 0;
 int savedSignalGroupHighlightedIndex = 0;
 int savedSignalGroupScrollOffset = 0;
 bool onSavedSignalGroups = false;
 String currentSavedGroup = "";
 
-String groupedSignalFiles[20];
+String groupedSignalFiles[50];
 int groupedSignalCount = 0;
 int groupedSignalHighlightedIndex = 0;
 int groupedSignalScrollOffset = 0;
@@ -314,7 +314,7 @@ char outputText[MAX_SAVED_SIGNAL_CHARS + 1] = "";
 bool onKeyboard = false;
 
 // Signal list variables
-String signalFiles[20];
+String signalFiles[50];
 int signalCount = 0;
 int highlightedIndex = 0;
 int scrollOffset = 0;
@@ -1770,7 +1770,7 @@ void listGroupedSignals() {
   }
 
   File entry = dir.openNextFile();
-  while (entry && groupedSignalCount < 20) {
+  while (entry && groupedSignalCount < 50) {
     if (!entry.isDirectory()) {
       String filename = String(entry.name());
       String prefix = extractPrefix(filename);
