@@ -3,9 +3,13 @@
 #include <SPI.h>
 #include <SD.h>
 #include <IRremote.hpp>
+#include <Preferences.h>
+#include <functional>
 #include "./IR-codes.h"
 
-// Pin definíciók – IDE kerülnek, az LGFX class előtt kell legyenek
+// ============================================================
+// Pin definitions
+// ============================================================
 constexpr uint8_t TFT_CS = 7;
 constexpr uint8_t TFT_RST = 10;
 constexpr uint8_t TFT_DC = 2;
@@ -18,6 +22,9 @@ constexpr uint8_t SD_CS = 3;
 constexpr uint8_t IR_TX = 0;
 constexpr uint8_t IR_RX = 1;
 
+// ============================================================
+// Display driver
+// ============================================================
 class LGFX : public lgfx::LGFX_Device {
   lgfx::Panel_ILI9341 _panel_instance;
   lgfx::Bus_SPI _bus_instance;
@@ -32,7 +39,7 @@ public:
       cfg.freq_read = 16000000;
       cfg.pin_sclk = TFT_CLK;
       cfg.pin_mosi = TFT_MOSI;
-      cfg.pin_miso = -1;  // display SDO nem kell
+      cfg.pin_miso = -1;
       cfg.pin_dc = TFT_DC;
       _bus_instance.config(cfg);
       _panel_instance.setBus(&_bus_instance);
@@ -66,44 +73,44 @@ public:
   }
 };
 
+// ============================================================
+// Structs & type aliases
+// ============================================================
 constexpr int MAX_SAVED_SIGNAL_CHARS = 25;
 
-// ===================================================================================
-// ================================= STRUCTS =========================================
-// ===================================================================================
-
-// IR Signal structure for SD card storage
 struct IRSignal {
   char name[MAX_SAVED_SIGNAL_CHARS + 1];
   uint16_t rawData[200];
   uint8_t rawDataLen;
 } __attribute__((packed));
 
-// Touchable button structure
 struct TouchButton {
   int x, y, w, h;
-  uint16_t color;
-  uint16_t textColor;
+  uint16_t color, textColor;
   const char *label;
   void (*callback)();
-  bool pressed;
-  bool isBackButton;
-  bool repeatable;
+  bool pressed, isBackButton, repeatable;
 };
 
-// Option structure with name and callback
+using RowRenderer = std::function<void(int idx, int y, int rowH, bool selected)>;
+
+struct ScrollList {
+  int itemCount = 0;
+  int rowHeight = 32;
+  int selectedIndex = -1;
+  float scrollPx = 0;
+  int viewX = 0, viewY = 0, viewW = 0, viewH = 0;
+  RowRenderer renderRow;
+  std::function<void()> onOpen = nullptr;
+};
+
 struct Option {
   const char *name;
   void (*callback)();
 };
 
-// Theme color sets
 struct ThemeColors {
-  uint16_t primary;
-  uint16_t secondary;
-  uint16_t accent;
-  uint16_t dark;
-  uint16_t darkest;
+  uint16_t primary, secondary, accent, dark, darkest;
 };
 
 struct HardcodedBrand {
@@ -112,177 +119,67 @@ struct HardcodedBrand {
   uint8_t codesLength;
 };
 
-uint8_t activeBtnIndex = 0;
-const IRCode *currentBrandCodes = nullptr;
-uint8_t currentBrandCodesLength = 0;
-int currentCodeIndex = 0;
+// ============================================================
+// Constants
+// ============================================================
+// Scroll list viewport — shared by every list screen
+constexpr int LIST_VIEW_X = 5;
+constexpr int LIST_VIEW_Y = 26;
+constexpr int LIST_VIEW_W = 230;
+constexpr int LIST_VIEW_H = 228;
+constexpr int LIST_BUTTON_Y = 260;
 
-// File browser variables
-String sdFiles[500];
-int sdFileCount = 0;
-int sdHighlightedIndex = 0;
-int sdScrollOffset = 0;
-bool onSDFiles = false;
-String currentPath = "/";
-int sdMaxVisible = 6;
+// Touch timing
+constexpr unsigned long REPEAT_INTERVAL = 200;
+constexpr int SCROLL_DRAG_THRESHOLD = 10;
+constexpr unsigned long DOUBLE_TAP_WINDOW = 400;
 
-String builtInBrands[50];
-int builtInBrandCount = 0;
-int builtInBrandHighlightedIndex = 0;
-int builtInBrandScrollOffset = 0;
-bool onBuiltInBrands = false;
+// ============================================================
+// Theme presets
+// ============================================================
+const ThemeColors THEME_FUTURISTIC_RED = { 0xF800, 0xD000, 0x8800, 0x4208, 0x2104 };
+const ThemeColors THEME_FUTURISTIC_GREEN = { 0x07E0, 0x05C0, 0x0400, 0x4208, 0x2104 };
+const ThemeColors THEME_FUTURISTIC_PURPLE = { 0xF81F, 0xC81F, 0x8010, 0x4208, 0x2104 };
 
-String builtInSignals[50];
-int builtInSignalCount = 0;
-int builtInSignalHighlightedIndex = 0;
-int builtInSignalScrollOffset = 0;
-bool onBuiltInSignals = false;
-String currentBrandPath = "";
-
-// Signal grouping
-String savedSignalGroups[50];
-int savedSignalGroupCount = 0;
-int savedSignalGroupHighlightedIndex = 0;
-int savedSignalGroupScrollOffset = 0;
-bool onSavedSignalGroups = false;
-String currentSavedGroup = "";
-
-String groupedSignalFiles[50];
-int groupedSignalCount = 0;
-int groupedSignalHighlightedIndex = 0;
-int groupedSignalScrollOffset = 0;
-
-// ===================================================================================
-// ================================== THEMES =========================================
-// ===================================================================================
-
-// Define theme presets
-const ThemeColors THEME_FUTURISTIC_RED = {
-  0xF800,  // Red
-  0xD000,  // Crimson
-  0x8800,  // Dark Red
-  0x4208,  // Grey
-  0x2104   // Dark Grey
-};
-
-const ThemeColors THEME_FUTURISTIC_GREEN = {
-  0x07E0,  // Green
-  0x05C0,  // Dark Green
-  0x0400,  // Darker Green
-  0x4208,  // Grey
-  0x2104   // Dark Grey
-};
-
-const ThemeColors THEME_FUTURISTIC_PURPLE = {
-  0xF81F,  // Magenta/Purple
-  0xC81F,  // Dark Purple
-  0x8010,  // Darker Purple
-  0x4208,  // Grey
-  0x2104   // Dark Grey
-};
-
-// ===================================================================================
-// ========================= FUNCTION PROROTYPES =====================================
-// ===================================================================================
-
-// Display helper
-void initDisplay();
-void drawMenuUI();
-void drawBackBtn(uint8_t x, uint8_t y, uint8_t width, uint8_t height, void (*callback)());
-void drawTitle(const char *titleName, uint16_t x = 90, uint16_t y = 305);
-int processTouchButtons(int tx, int ty);
-void drawButton(TouchButton *btn, bool active);
-void drawHeaderFooter();
-void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)(), bool isBackButton = false, bool repeatable = false);
-bool isTouchInButton(TouchButton *btn, int tx, int ty);
-void createOptions(const Option options[], int count, int x = 10, int y = 50, int btnWidth = 220, int btnHeight = 45);
-void createGridOptions(const Option options[], int count, int rows, int cols, int startX = 10, int startY = 70, int spacing = 5, int btnSize = 50);
-
-// Signal options
+// ============================================================
+// Static data (menus & brand library)
+// ============================================================
 void signalOptions();
-void transmitOptions();
 void listSavedSignals();
-void listFavoriteSignals();
 void startSignalListen();
-void drawKeyboard();
-void processKeyboardInput();
-
-// Projector brands
 void builtInSignalsBrowser();
-
-// IR Signal functions
-void captureSignal();
-void saveSignalToSD(const IRSignal &signal);
-void loadSignalsFromSD();
-void transmitSignal(const IRSignal &signal);
-uint16_t prontoToRawSignal(const uint16_t *pronto, uint16_t *outRaw, uint8_t maxOut);
-void deleteSignalFromSD(const char *filename);
-
-// SD Card
 void sdData();
+void themeOptions();
+void drawMenuUI();
 void listSDInfo();
-String formatBytes(uint64_t bytes);
-int countFilesInDirectory(const char *directoryPath);
 void listSDFiles();
 void sdFormatOptions();
-bool deleteDirectory(const char *path);
 void formatSD();
-String extractPrefix(String filename);
-void listGroupedSignals();
-void deleteSelectedFile();
-
-// Theme
-void themeOptions();
-void setTheme(uint8_t themeIndex);
 void setThemeFuturisticRed();
 void setThemeFuturisticGreen();
 void setThemeFuturisticPurple();
 
-// ===================================================================================
-// ================================= OPTIONS =========================================
-// ===================================================================================
-
-// Menu options (first glance)
 const Option MENU_OPTIONS[] = {
   { "Signal options", signalOptions },
   { "Built-in signals", builtInSignalsBrowser },
   { "SD Card options", sdData },
   { "Change theme", themeOptions }
 };
-
 const Option MENU_OPTIONS_NO_SD[] = {
   { "Signal options", signalOptions },
   { "Built-in signals", builtInSignalsBrowser },
   { "Change theme", themeOptions }
 };
-
-// Signal options
-const Option SIGNAL_OPTIONS[] = {
-  { "Transmit", transmitOptions },
-  { "Receive", startSignalListen },
-  { "Back", signalOptions }
-};
-
-const Option TRANSMIT_OPTIONS[] = {
-  { "Saved signals", listSavedSignals },
-  { "Favorites", listFavoriteSignals },
-  { "Back", signalOptions }
-};
-
-// SD Card
 const Option SD_CARD_OPTIONS[] = {
   { "Info", listSDInfo },
   { "Files", listSDFiles },
   { "Format", sdFormatOptions },
   { "Back", drawMenuUI }
 };
-
 const Option SD_FORMAT_OPTIONS[] = {
   { "Yes, format", formatSD },
   { "Cancel formatting", sdData }
 };
-
-// Theme
 const Option THEME_OPTIONS[] = {
   { "Futuristic Red", setThemeFuturisticRed },
   { "Futuristic Green", setThemeFuturisticGreen },
@@ -290,7 +187,6 @@ const Option THEME_OPTIONS[] = {
   { "Back", drawMenuUI }
 };
 
-// Hardcoded signals
 const HardcodedBrand hardcodedBrands[] = {
   { "EPSON", EPSON_CODES, EPSON_CODES_LENGTH },
   { "LED_STRIP", LED_STRIP_CODES, LED_STRIP_CODES_LENGTH },
@@ -299,82 +195,161 @@ const HardcodedBrand hardcodedBrands[] = {
   { "NEC", NEC_CODES, NEC_CODES_LENGTH },
   { "PANASONIC", PANASONIC_CODES, PANASONIC_CODES_LENGTH }
 };
-
 const uint8_t hardcodedBrandsLength = sizeof(hardcodedBrands) / sizeof(hardcodedBrands[0]);
 
-// ===================================================================================
-// ============================= INITIALIZATION ======================================
-// ===================================================================================
-
-// Initialize display & touch & SD
+// ============================================================
+// Global state
+// ============================================================
+// --- Display & preferences ---
 LGFX tft;
 SPIClass spiSD(FSPI);
 ThemeColors currentTheme;
-
-// Helper variables
-TouchButton buttons[30];  // Max number of buttons as predefined array
-uint8_t buttonCount = 0;
+Preferences prefs;
 bool initializedSD = false;
 
-// Default theme
-const ThemeColors DEFAULT_THEME = THEME_FUTURISTIC_RED;
+// --- Scroll list engine ---
+LGFX_Sprite listSprite(&tft);
+bool listSpriteReady = false;
+ScrollList activeList;
+ScrollList *activeScrollList = nullptr;
 
-// Debouncing variables
-unsigned long lastTouchTime = 0;
-constexpr unsigned long DEBOUNCE_DELAY = 300;  // ms
+// --- Button system ---
+TouchButton buttons[30];
+uint8_t buttonCount = 0;
+uint8_t activeBtnIndex = 0;
 
-// IR Signal variables
+// --- IR capture ---
 uint16_t currentRawData[200];
 uint32_t currentDecodedHex = 0;
 uint8_t currentRawDataLen = 0;
 bool signalCaptured = false;
 bool listeningForSignal = false;
-int mark_excess_micros = 20;
 
-// Keyboard variables
-const char *const alphabet[26] = {
-  "A", "B", "C", "D", "E", "F", "G",
-  "H", "I", "J", "K", "L", "M", "N",
-  "O", "P", "Q", "R", "S", "T", "U",
-  "V", "W", "X", "Y", "Z"
-};
+// --- Built-in signal browser ---
+const IRCode *currentBrandCodes = nullptr;
+uint8_t currentBrandCodesLength = 0;
+int builtInBrandCount = 0;
+int builtInSignalCount = 0;
+String currentBrandPath = "";
 
-int cursorRow = 0;
-int cursorCol = 0;
+// --- SD file browser ---
+String sdFiles[500];
+int sdFileCount = 0;
+String currentPath = "/";
+
+// --- Saved signal groups ---
+String savedSignalGroups[50];
+int savedSignalGroupCount = 0;
+String currentSavedGroup = "";
+String groupedSignalFiles[50];
+int groupedSignalCount = 0;
+
+// --- Keyboard ---
+const char *const qwerty0[10] = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" };
+const char *const qwerty1[9] = { "A", "S", "D", "F", "G", "H", "J", "K", "L" };
+const char *const qwerty2[7] = { "Z", "X", "C", "V", "B", "N", "M" };
 char outputText[MAX_SAVED_SIGNAL_CHARS + 1] = "";
-bool onKeyboard = false;
 
-// Signal list variables
-String signalFiles[50];
-int signalCount = 0;
-int highlightedIndex = 0;
-int scrollOffset = 0;
-bool onSavedSignals = false;
+// --- Touch / gesture ---
+bool touchHeld = false;
+int heldButtonIndex = -1;
+unsigned long lastRepeatFire = 0;
+bool scrollGestureActive = false;
+bool scrollIsDragging = false;
+int32_t scrollStartY = 0;
+float scrollStartPx = 0;
+int lastTapIndex = -1;
+unsigned long lastTapTime = 0;
 
-// ===================================================================================
-// =================================== SETUP =========================================
-// ===================================================================================
+// ============================================================
+// Function prototypes
+// ============================================================
+// Display
+void initDisplay();
+void drawBootSplash();
+void drawMenuUI();
+void clearScreen();
+void drawHeaderFooter();
+void drawTitle(const char *title, uint16_t x = 90, uint16_t y = 305);
+void drawBackBtn(uint8_t x, uint8_t y, uint8_t w, uint8_t h, void (*cb)());
+void printCentered(const char *text, int y, uint16_t color, uint8_t size);
 
+// Scroll engine
+void ensureListSprite(int w, int h);
+void clampScroll(ScrollList &list);
+void renderScrollList(ScrollList &list);
+void setupAndRenderScrollList(int count, int rowH, RowRenderer renderer);
+
+// Touch system
+int processTouchButtons(int tx, int ty);
+bool isTouchInButton(TouchButton *btn, int tx, int ty);
+void drawButton(TouchButton *btn, bool active);
+void createTouchBox(int x, int y, int w, int h, uint16_t color, uint16_t textColor, const char *label, void (*cb)(), bool isBack = false, bool repeatable = false);
+void createOptions(const Option opts[], int count, int x = 10, int y = 50, int bw = 220, int bh = 45);
+
+// Screens
+void signalOptions();
+void listSavedSignals();
+void drawSavedSignalsList();
+void startSignalListen();
+void listBuiltInSignals();
+void builtInSignalsBrowser();
+void sdData();
+void listSDInfo();
+void listSDFiles();
+void loadSDFiles(String path);
+void drawSDFileBrowser();
+void sdFormatOptions();
+void formatSD();
+void listGroupedSignals();
+void drawGroupedSignalsList();
+void deleteSelectedFile();
+void themeOptions();
+
+// Keyboard
+void drawKeyboard();
+void keyboardButtonPressed();
+
+// IR
+void captureSignal();
+void saveSignalToSD(const IRSignal &signal);
+void transmitSignal(const IRSignal &signal);
+uint16_t prontoToRawSignal(const uint16_t *pronto, uint16_t *outRaw, uint8_t maxOut);
+
+// SD helpers
+String formatBytes(uint64_t bytes);
+int countFilesInDirectory(const char *path);
+bool deleteDirectory(const char *path);
+void formatStatusLine(const char *label, uint16_t labelColor, const String &name);
+String extractPrefix(String filename);
+
+// Theme
+ThemeColors themeFromIndex(uint8_t idx);
+void setTheme(uint8_t themeIndex);
+void setThemeFuturisticRed();
+void setThemeFuturisticGreen();
+void setThemeFuturisticPurple();
+
+// ============================================================
+// Setup & loop
+// ============================================================
 void setup() {
   initDisplay();
 }
 
-// ===================================================================================
-// ==================================== LOOP =========================================
-// ===================================================================================
-
-bool touchHeld = false;
-int heldButtonIndex = -1;
-unsigned long lastRepeatFire = 0;
-constexpr unsigned long REPEAT_INTERVAL = 200;  // ms
+bool pointInScrollView(ScrollList *list, int x, int y) {
+  return list
+         && x >= list->viewX && x <= list->viewX + list->viewW
+         && y >= list->viewY && y <= list->viewY + list->viewH;
+}
 
 void loop() {
   if (listeningForSignal && !signalCaptured) {
     if (IrReceiver.decode()) {
       captureSignal();
+      buttonCount = 0;
+      clearScreen();
       if (currentRawDataLen < 10) {
-        buttonCount = 0;
-        tft.fillRect(0, 60, 240, 258, TFT_BLACK);
         printCentered("Invalid", 120, currentTheme.primary, 2);
         printCentered("signal!", 140, currentTheme.primary, 2);
         delay(2000);
@@ -382,11 +357,7 @@ void loop() {
       } else {
         signalCaptured = true;
         listeningForSignal = false;
-        tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-        tft.setTextSize(2);
-        tft.setTextColor(currentTheme.primary);
-        tft.setCursor(65, 150);
-        tft.println("Captured!");
+        printCentered("Captured!", 150, currentTheme.primary, 2);
         delay(1500);
         drawKeyboard();
       }
@@ -400,8 +371,26 @@ void loop() {
   if (touching) {
     if (!touchHeld) {
       touchHeld = true;
-      heldButtonIndex = processTouchButtons((int)tx, (int)ty);
-      lastRepeatFire = millis();
+      if (pointInScrollView(activeScrollList, (int)tx, (int)ty)) {
+        scrollGestureActive = true;
+        scrollIsDragging = false;
+        scrollStartY = ty;
+        scrollStartPx = activeScrollList->scrollPx;
+        heldButtonIndex = -1;
+      } else {
+        scrollGestureActive = false;
+        heldButtonIndex = processTouchButtons((int)tx, (int)ty);
+        lastRepeatFire = millis();
+      }
+    } else if (scrollGestureActive && activeScrollList) {
+      int32_t delta = ty - scrollStartY;
+      if (!scrollIsDragging && abs((int)delta) > SCROLL_DRAG_THRESHOLD)
+        scrollIsDragging = true;
+      if (scrollIsDragging) {
+        activeScrollList->scrollPx = scrollStartPx - delta;
+        clampScroll(*activeScrollList);
+        renderScrollList(*activeScrollList);
+      }
     } else if (heldButtonIndex >= 0 && heldButtonIndex < buttonCount) {
       TouchButton *btn = &buttons[heldButtonIndex];
       if (btn->repeatable && isTouchInButton(btn, (int)tx, (int)ty)) {
@@ -409,17 +398,35 @@ void loop() {
         if (now - lastRepeatFire > REPEAT_INTERVAL) {
           lastRepeatFire = now;
           if (btn->callback) btn->callback();
-          // a callback újrarajzolt -> frissítsük a "lenyomva" vizuált
           if (heldButtonIndex < buttonCount) {
-            TouchButton *refreshed = &buttons[heldButtonIndex];
-            refreshed->pressed = true;
-            drawButton(refreshed, true);
+            buttons[heldButtonIndex].pressed = true;
+            drawButton(&buttons[heldButtonIndex], true);
           }
         }
       }
     }
-    delay(50);
+    delay(scrollIsDragging ? 16 : 50);
+
   } else {
+    if (scrollGestureActive && !scrollIsDragging && activeScrollList) {
+      int relY = scrollStartY - activeScrollList->viewY;
+      int tapped = (int)((activeScrollList->scrollPx + relY) / activeScrollList->rowHeight);
+      if (tapped >= 0 && tapped < activeScrollList->itemCount) {
+        unsigned long now = millis();
+        bool isDoubleTap = (tapped == lastTapIndex) && (now - lastTapTime < DOUBLE_TAP_WINDOW);
+        activeScrollList->selectedIndex = tapped;
+        renderScrollList(*activeScrollList);
+        if (isDoubleTap && activeScrollList->onOpen) {
+          lastTapIndex = -1;
+          activeScrollList->onOpen();
+        } else {
+          lastTapIndex = tapped;
+          lastTapTime = now;
+        }
+      }
+    }
+    scrollGestureActive = false;
+    scrollIsDragging = false;
     touchHeld = false;
     heldButtonIndex = -1;
     for (int i = 0; i < buttonCount; i++) {
@@ -429,177 +436,193 @@ void loop() {
       }
     }
   }
-
   delay(10);
 }
 
-// ===================================================================================
-// ============================= DISPLAY DRAWING =====================================
-// ===================================================================================
-
+// ============================================================
+// Display
+// ============================================================
 void initDisplay() {
   Serial.begin(115200);
-
-  currentTheme = DEFAULT_THEME;
+  prefs.begin("uniremote", true);
+  currentTheme = themeFromIndex(prefs.getUChar("theme", 0));
+  prefs.end();
 
   IrSender.begin(IR_TX);
   IrReceiver.begin(IR_RX);
 
-  pinMode(TFT_CS, OUTPUT);
-  digitalWrite(TFT_CS, HIGH);
-  pinMode(TOUCH_CS, OUTPUT);
-  digitalWrite(TOUCH_CS, HIGH);
-  pinMode(SD_CS, OUTPUT);
-  digitalWrite(SD_CS, HIGH);
+  for (uint8_t cs : { TFT_CS, TOUCH_CS, SD_CS }) {
+    pinMode(cs, OUTPUT);
+    digitalWrite(cs, HIGH);
+  }
 
   spiSD.begin(TFT_CLK, TFT_MISO, TFT_MOSI, SD_CS);
-  if (!SD.begin(SD_CS, spiSD, 20000000)) {
-    initializedSD = false;
-  } else {
-    initializedSD = true;
-    if (!SD.exists("/saved-signals")) SD.mkdir("/saved-signals");
-  }
+  initializedSD = SD.begin(SD_CS, spiSD, 20000000);
+  if (initializedSD && !SD.exists("/saved-signals")) SD.mkdir("/saved-signals");
 
   tft.init();
   tft.setRotation(0);
-
-  drawMenuUI();
+  drawBootSplash();
 }
 
-void drawTitle(const char *titleName, uint16_t x, uint16_t y) {
-  tft.setTextSize(1);
-  tft.setCursor(x, y);
-  tft.setTextColor(currentTheme.primary);
-  tft.println(titleName);
+void clearScreen() {
+  tft.fillRect(0, 10, 240, 308, TFT_BLACK);
+  drawHeaderFooter();
 }
 
-void printCentered(const char *text, int y, uint16_t color, uint8_t size) {
-  tft.setTextSize(size);
-  tft.setTextColor(color);
-  int16_t tw = tft.textWidth(text);
-  int16_t x = (240 - tw) / 2;
-  tft.setCursor(x, y);
-  tft.print(text);
-}
-
-// Draw header and footer decorations
 void drawHeaderFooter() {
-  // Header border
+  activeScrollList = nullptr;
+  activeList.onOpen = nullptr;
+  lastTapIndex = -1;
   tft.drawFastHLine(0, 0, 239, currentTheme.primary);
-
-  // Top corner accents
   for (int i = 0; i < 15; i++) {
     tft.drawPixel(i, 2 + i / 3, currentTheme.primary);
     tft.drawPixel(239 - i, 2 + i / 3, currentTheme.primary);
   }
-
-  // Footer border
   tft.drawFastHLine(0, 318, 240, currentTheme.primary);
-
-  // Bottom corner accents
   for (int i = 0; i < 15; i++) {
     tft.drawPixel(i, 317 - i / 3, currentTheme.primary);
     tft.drawPixel(239 - i, 317 - i / 3, currentTheme.primary);
   }
 }
 
-// Redraw the entire UI with current theme
-void drawMenuUI() {
-  // Clear screen
-  tft.fillScreen(TFT_BLACK);
-
-  // Draw header and footer
-  drawHeaderFooter();
-
-  // Main title
+void drawTitle(const char *title, uint16_t x, uint16_t y) {
+  tft.setTextSize(1);
   tft.setTextColor(currentTheme.primary);
-  tft.setTextSize(3);
-  tft.setCursor(45, 10);
-  tft.println("UNIVERSAL");
-  tft.setCursor(70, 40);
-  tft.println("REMOTE");
+  tft.setCursor(x, y);
+  tft.println(title);
+}
 
-  // Draw menu options & title
+void printCentered(const char *text, int y, uint16_t color, uint8_t size) {
+  tft.setTextSize(size);
+  tft.setTextColor(color);
+  tft.setCursor((240 - tft.textWidth(text)) / 2, y);
+  tft.print(text);
+}
+
+void drawBackBtn(uint8_t x, uint8_t y, uint8_t w, uint8_t h, void (*cb)()) {
+  createTouchBox(x, y, w, h, currentTheme.secondary, currentTheme.secondary, "Back", cb, true);
+}
+
+void drawBootSplash() {
+  tft.fillScreen(TFT_BLACK);
+  drawHeaderFooter();
+  printCentered("UNIVERSAL", 120, currentTheme.primary, 3);
+  printCentered("REMOTE", 155, currentTheme.primary, 3);
+  delay(2000);
+  drawMenuUI();
+}
+
+void drawMenuUI() {
+  tft.fillScreen(TFT_BLACK);
+  drawHeaderFooter();
   if (initializedSD) {
-    createOptions(MENU_OPTIONS, 4, 10, 70);
+    createOptions(MENU_OPTIONS, 4, 10, 27, 220, 52);
   } else {
-    createOptions(MENU_OPTIONS_NO_SD, 3, 10, 80);
+    createOptions(MENU_OPTIONS_NO_SD, 3, 10, 40, 220, 62);
   }
   drawTitle("MENU", 110);
 }
 
-void drawBackBtn(uint8_t x, uint8_t y, uint8_t width, uint8_t height, void (*callback)()) {
-  createTouchBox(x, y, width, height, currentTheme.secondary, currentTheme.secondary, "Back", callback, true);
+// ============================================================
+// Scroll engine
+// ============================================================
+void ensureListSprite(int w, int h) {
+  if (listSpriteReady) return;
+  listSprite.setColorDepth(16);
+  if (listSprite.createSprite(w, h)) {
+    listSpriteReady = true;
+  } else {
+    Serial.println("Sprite alloc failed — not enough RAM");
+  }
 }
 
-// ===================================================================================
-// ============================= DISPLAY OPTIONS =====================================
-// ===================================================================================
+void clampScroll(ScrollList &list) {
+  float maxScroll = max(0.0f, (float)(list.itemCount * list.rowHeight - list.viewH));
+  list.scrollPx = constrain(list.scrollPx, 0.0f, maxScroll);
+}
 
+void renderScrollList(ScrollList &list) {
+  ensureListSprite(list.viewW, list.viewH);
+  listSprite.fillSprite(TFT_BLACK);
+
+  int firstIndex = (int)(list.scrollPx / list.rowHeight);
+  int subPixel = (int)list.scrollPx - firstIndex * list.rowHeight;
+  int rowsToDraw = list.viewH / list.rowHeight + 2;
+
+  for (int n = 0; n < rowsToDraw; n++) {
+    int idx = firstIndex + n;
+    if (idx < 0 || idx >= list.itemCount) continue;
+    int y = n * list.rowHeight - subPixel;
+    if (y + list.rowHeight < 0 || y > list.viewH) continue;
+    if (list.renderRow) list.renderRow(idx, y, list.rowHeight, idx == list.selectedIndex);
+  }
+
+  float maxScroll = (float)(list.itemCount * list.rowHeight - list.viewH);
+  if (maxScroll > 0) {
+    int barH = max(15, (int)(list.viewH * (float)list.viewH / (list.itemCount * list.rowHeight)));
+    int barY = (int)((list.viewH - barH) * (list.scrollPx / maxScroll));
+    listSprite.fillRect(list.viewW - 3, barY, 3, barH, currentTheme.secondary);
+  }
+  listSprite.pushSprite(list.viewX, list.viewY);
+}
+
+void setupAndRenderScrollList(int count, int rowH, RowRenderer renderer) {
+  activeList.itemCount = count;
+  activeList.rowHeight = rowH;
+  activeList.viewX = LIST_VIEW_X;
+  activeList.viewY = LIST_VIEW_Y;
+  activeList.viewW = LIST_VIEW_W;
+  activeList.viewH = LIST_VIEW_H;
+  activeList.renderRow = renderer;
+  clampScroll(activeList);
+  activeScrollList = &activeList;
+  renderScrollList(activeList);
+}
+
+// ============================================================
+// Screens — Signal
+// ============================================================
 void signalOptions() {
   buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-
-  // Create 1x2 grid - TRANSMIT goes directly to saved signals
-  int btnSize = 100;
-  int spacing = 10;
-  int totalWidth = (btnSize * 2) + spacing;
-  int startX = (240 - totalWidth) / 2;
-
+  clearScreen();
+  const int btnSize = 100, gap = 10;
+  const int startX = (240 - btnSize * 2 - gap) / 2;
   createTouchBox(startX, 70, btnSize, btnSize, currentTheme.primary, currentTheme.primary, "Transmit", listSavedSignals);
-  createTouchBox(startX + btnSize + spacing, 70, btnSize, btnSize, currentTheme.primary, currentTheme.primary, "Receive", startSignalListen);
-
-  // Centered Back button
+  createTouchBox(startX + btnSize + gap, 70, btnSize, btnSize, currentTheme.primary, currentTheme.primary, "Receive", startSignalListen);
   createTouchBox(60, 190, 120, 45, currentTheme.secondary, currentTheme.secondary, "Back", drawMenuUI, true);
-
   drawHeaderFooter();
-
   drawTitle("Signal options", 80);
 }
 
-void transmitOptions() {
-  createOptions(TRANSMIT_OPTIONS, 3, 10, 100);
-  drawTitle("Signal > Transmit", 70);
-}
-
-// FIXED: Removed needsFullRedraw optimization
 void listSavedSignals() {
-  onSavedSignalGroups = true;
-  onSavedSignals = false;
   savedSignalGroupCount = 0;
-
   File dir = SD.open("/saved-signals");
   if (dir) {
-    File entry = dir.openNextFile();
-    while (entry && savedSignalGroupCount < 50) {
-      if (!entry.isDirectory()) {
-        String filename = String(entry.name());
-        String prefix = extractPrefix(filename);
-        bool exists = false;
+    for (File e = dir.openNextFile(); e && savedSignalGroupCount < 50; e = dir.openNextFile()) {
+      if (!e.isDirectory()) {
+        String prefix = extractPrefix(String(e.name()));
+        bool found = false;
         for (int i = 0; i < savedSignalGroupCount; i++) {
           if (savedSignalGroups[i] == prefix) {
-            exists = true;
+            found = true;
             break;
           }
         }
-        if (!exists) savedSignalGroups[savedSignalGroupCount++] = prefix;
+        if (!found) savedSignalGroups[savedSignalGroupCount++] = prefix;
       }
-      entry.close();
-      entry = dir.openNextFile();
+      e.close();
     }
     dir.close();
   }
-
-  savedSignalGroupHighlightedIndex = 0;
-  savedSignalGroupScrollOffset = 0;
+  activeList.selectedIndex = 0;
+  activeList.scrollPx = 0;
   drawSavedSignalsList();
 }
 
 void drawSavedSignalsList() {
   buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-
+  clearScreen();
   if (savedSignalGroupCount == 0) {
     printCentered("No signals", 150, currentTheme.primary, 2);
     printCentered("saved!", 170, currentTheme.primary, 2);
@@ -607,63 +630,21 @@ void drawSavedSignalsList() {
     drawTitle("Transmit > Saved", 70);
     return;
   }
-
-  int maxVisible = 5, yPos = 70, lineHeight = 30;
-  for (int i = savedSignalGroupScrollOffset; i < min(savedSignalGroupScrollOffset + maxVisible, savedSignalGroupCount); i++) {
-    if (i == savedSignalGroupHighlightedIndex) {
-      tft.fillRect(5, yPos, 230, 25, currentTheme.primary);
-      tft.setTextColor(TFT_BLACK);
-    } else {
-      tft.setTextColor(TFT_WHITE);
-    }
-    tft.setTextSize(2);
-    tft.setCursor(10, yPos + 5);
-    tft.println(savedSignalGroups[i]);
-    yPos += lineHeight;
-  }
-
-  if (savedSignalGroupScrollOffset > 0)
-    tft.fillTriangle(225, 85, 220, 90, 230, 90, TFT_WHITE);
-  if (savedSignalGroupScrollOffset + maxVisible < savedSignalGroupCount)
-    tft.fillTriangle(225, 225, 220, 220, 230, 220, TFT_WHITE);
-
-  createTouchBox(
-    10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
-      if (savedSignalGroupHighlightedIndex > 0) {
-        savedSignalGroupHighlightedIndex--;
-        if (savedSignalGroupHighlightedIndex < savedSignalGroupScrollOffset)
-          savedSignalGroupScrollOffset = savedSignalGroupHighlightedIndex;
-        drawSavedSignalsList();
-      }
-    },
-    false, true);
-
-  createTouchBox(
-    85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
-      if (savedSignalGroupHighlightedIndex < savedSignalGroupCount - 1) {
-        savedSignalGroupHighlightedIndex++;
-        if (savedSignalGroupHighlightedIndex >= savedSignalGroupScrollOffset + 5)
-          savedSignalGroupScrollOffset = savedSignalGroupHighlightedIndex - 5 + 1;
-        drawSavedSignalsList();
-      }
-    },
-    false, true);
-
-  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Open", []() {
-    currentSavedGroup = savedSignalGroups[savedSignalGroupHighlightedIndex];
-    listGroupedSignals();  // új csoport -> friss betöltés indokolt
+  setupAndRenderScrollList(savedSignalGroupCount, 32, [](int idx, int y, int rowH, bool sel) {
+    listSprite.fillRect(0, y, LIST_VIEW_W, rowH - 2, sel ? currentTheme.primary : TFT_BLACK);
+    listSprite.setTextColor(sel ? TFT_BLACK : TFT_WHITE);
+    listSprite.setTextSize(2);
+    listSprite.setCursor(5, y + 6);
+    listSprite.println(savedSignalGroups[idx]);
   });
-
-  tft.fillRect(10, 270, 220, 25, TFT_BLACK);
-  createTouchBox(10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", signalOptions, true);
+  activeList.onOpen = []() {
+    if (activeList.selectedIndex >= 0 && activeList.selectedIndex < savedSignalGroupCount) {
+      currentSavedGroup = savedSignalGroups[activeList.selectedIndex];
+      listGroupedSignals();
+    }
+  };
+  createTouchBox(60, LIST_BUTTON_Y, 120, 28, currentTheme.secondary, currentTheme.secondary, "Back", signalOptions, true);
   drawTitle("Transmit > Saved", 70);
-}
-
-void listFavoriteSignals() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-  drawTitle("Transmit > Favorites", 60);
 }
 
 void startSignalListen() {
@@ -672,188 +653,488 @@ void startSignalListen() {
   signalCaptured = false;
   currentRawDataLen = 0;
   currentDecodedHex = 0;
-
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-
-  tft.setTextSize(2);
-  tft.setTextColor(currentTheme.primary);
-  tft.setCursor(60, 120);
-  tft.println("Listening");
-  tft.setCursor(50, 140);
-  tft.println("for signal...");
-
+  clearScreen();
+  printCentered("Listening", 120, currentTheme.primary, 2);
+  printCentered("for signal...", 140, currentTheme.primary, 2);
   drawBackBtn(85, 200, 70, 40, []() {
     listeningForSignal = false;
     signalCaptured = false;
     signalOptions();
   });
-
   drawTitle("Receive > Listen", 70);
 }
 
-// ===================================================================================
-// ============================== IR SIGNAL FUNCTIONS ================================
-// ===================================================================================
+// ============================================================
+// Screens — Built-in signals
+// ============================================================
+void builtInSignalsBrowser() {
+  buttonCount = 0;
+  builtInBrandCount = hardcodedBrandsLength;
+  activeList.selectedIndex = 0;
+  activeList.scrollPx = 0;
+  clearScreen();
 
-void captureSignal() {
-  // decode() már lefutott a loop()-ban, ne hívd újra
-  if (IrReceiver.decodedIRData.rawlen == 0) {
-    IrReceiver.resume();
+  if (builtInBrandCount == 0) {
+    printCentered("No brands", 120, currentTheme.primary, 2);
+    printCentered("found!", 140, currentTheme.primary, 2);
+    drawBackBtn(60, 200, 120, 40, drawMenuUI);
+    drawTitle("Built-in signals", 70);
     return;
   }
-
-  currentRawDataLen = IrReceiver.decodedIRData.rawlen - 1;
-  if (currentRawDataLen > 200) currentRawDataLen = 200;
-
-  for (uint16_t i = 1; i <= currentRawDataLen; i++) {
-    currentRawData[i - 1] = IrReceiver.irparams.rawbuf[i] * MICROS_PER_TICK;
-  }
-
-  currentDecodedHex = IrReceiver.decodedIRData.decodedRawData;
-  signalCaptured = true;
-  IrReceiver.resume();
+  setupAndRenderScrollList(builtInBrandCount, 32, [](int idx, int y, int rowH, bool sel) {
+    listSprite.fillRect(0, y, LIST_VIEW_W, rowH - 2, sel ? currentTheme.primary : TFT_BLACK);
+    listSprite.setTextColor(sel ? TFT_BLACK : TFT_WHITE);
+    listSprite.setTextSize(2);
+    listSprite.setCursor(5, y + 6);
+    listSprite.println(hardcodedBrands[idx].brandName);
+  });
+  activeList.onOpen = []() {
+    int idx = activeList.selectedIndex;
+    if (idx < 0 || idx >= builtInBrandCount) return;
+    currentBrandCodes = hardcodedBrands[idx].codes;
+    currentBrandCodesLength = hardcodedBrands[idx].codesLength;
+    currentBrandPath = hardcodedBrands[idx].brandName;
+    listBuiltInSignals();
+  };
+  createTouchBox(60, LIST_BUTTON_Y, 120, 28, currentTheme.secondary, currentTheme.secondary, "Back", drawMenuUI, true);
+  drawTitle("Built-in signals", 70);
 }
 
-void saveSignalToSD(const IRSignal &signal) {
-  String filename = "/saved-signals/" + String(signal.name) + ".bin";
-
-  File file = SD.open(filename.c_str(), FILE_WRITE);
-  if (file) {
-    file.write((uint8_t *)&signal, sizeof(IRSignal));
-    file.close();
-  }
-}
-
-void transmitSignal(const IRSignal &signal) {
-  IrSender.sendRaw(signal.rawData, signal.rawDataLen, 38);
-}
-
-// Pronto Hex -> nyers mikroszekundumos tömb konverzió
-// pronto[0]=formátum, pronto[1]=carrier freq kód, pronto[2]=seq1 burst-pár szám,
-// pronto[3]=seq2 burst-pár szám, pronto[4..]=tényleges impulzusszám-páros adat
-uint16_t prontoToRawSignal(const uint16_t *pronto, uint16_t *outRaw, uint8_t maxOut) {
-  float unit = pronto[1] * 0.241246f;  // µs / Pronto time unit
-
-  uint16_t totalPairs = pronto[2] + pronto[3];
-  uint16_t totalValues = totalPairs * 2;
-  if (totalValues > maxOut) totalValues = maxOut;
-  if (totalValues > 150 - 4) totalValues = 150 - 4;  // codeArray[150] méret-védelem
-
-  for (uint16_t i = 0; i < totalValues; i++) {
-    outRaw[i] = (uint16_t)(pronto[4 + i] * unit);
-  }
-  return totalValues;
-}
-
-void deleteSignalFromSD(const char *filename) {
-  String filepath = "/saved-signals/" + String(filename);
-  SD.remove(filepath.c_str());
-}
-
-// ===================================================================================
-// =============================== KEYBOARD FUNCTIONS ================================
-// ===================================================================================
-
-void drawKeyboard() {
-  onKeyboard = true;
+void listBuiltInSignals() {
   buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
+  activeList.selectedIndex = 0;
+  activeList.scrollPx = 0;
+  clearScreen();
 
+  if (!currentBrandCodes || currentBrandCodesLength == 0) {
+    printCentered("Brand not", 120, currentTheme.primary, 2);
+    printCentered("found!", 140, currentTheme.primary, 2);
+    drawBackBtn(60, 200, 120, 40, builtInSignalsBrowser);
+    drawTitle("Brand signals", 75);
+    return;
+  }
+  builtInSignalCount = currentBrandCodesLength;
+  setupAndRenderScrollList(builtInSignalCount, 32, [](int idx, int y, int rowH, bool sel) {
+    listSprite.fillRect(0, y, LIST_VIEW_W, rowH - 2, sel ? currentTheme.primary : TFT_BLACK);
+    listSprite.setTextColor(sel ? TFT_BLACK : TFT_WHITE);
+    listSprite.setTextSize(2);
+    listSprite.setCursor(5, y + 6);
+    listSprite.println(currentBrandCodes[idx].codeName);
+  });
+  createTouchBox(
+    15, LIST_BUTTON_Y, 100, 28, currentTheme.secondary, currentTheme.secondary, "Back",
+    []() {
+      builtInSignalsBrowser();
+    },
+    true);
+  createTouchBox(125, LIST_BUTTON_Y, 100, 28, currentTheme.primary, currentTheme.primary, "Send", []() {
+    if (activeList.selectedIndex < 0 || activeList.selectedIndex >= builtInSignalCount) return;
+    const IRCode *code = &currentBrandCodes[activeList.selectedIndex];
+    IRSignal signal;
+    strncpy(signal.name, code->codeName, sizeof(signal.name) - 1);
+    signal.name[sizeof(signal.name) - 1] = '\0';
+    signal.rawDataLen = (uint8_t)prontoToRawSignal(code->codeArray, signal.rawData, 200);
+    transmitSignal(signal);
+  });
+  drawTitle((currentBrandPath + " signals").c_str(), 70);
+}
+
+// ============================================================
+// Screens — SD Card
+// ============================================================
+void sdData() {
+  createOptions(SD_CARD_OPTIONS, 4, 10, 47, 220, 45);
+  drawTitle("SD Card options", 75);
+}
+
+void listSDInfo() {
+  buttonCount = 0;
+  clearScreen();
+  drawTitle("SD Card > Info", 75);
+  uint64_t total = SD.totalBytes(), used = SD.usedBytes();
+  int y = 110;
+
+  tft.setTextSize(3);
+  tft.setTextColor(currentTheme.primary);
+  tft.setCursor(5, 72);
+  tft.println("Storage");
+  tft.drawFastHLine(0, y - 12, 240, currentTheme.primary);
+  tft.drawFastHLine(0, y - 10, 240, currentTheme.primary);
+
+  tft.setTextSize(2);
+  auto row = [&](const char *label, String val) {
+    tft.setCursor(10, y);
+    tft.print(label);
+    tft.println(val);
+    y += 20;
+  };
+  row("Full: ", formatBytes(total));
+  row("Free: ", formatBytes(total - used));
+  row("Used: ", formatBytes(used));
+  y += 20;
+
+  tft.setTextSize(3);
+  tft.setCursor(5, y);
+  tft.println("Signals");
+  tft.drawFastHLine(0, y + 26, 240, currentTheme.primary);
+  tft.drawFastHLine(0, y + 28, 240, currentTheme.primary);
+  y += 40;
+  tft.setTextSize(2);
+  tft.setCursor(10, y);
+  tft.print("Saved: ");
+  tft.println(countFilesInDirectory("/saved-signals"));
+
+  drawBackBtn(185, 130, 55, 50, sdData);
+}
+
+void listSDFiles() {
+  buttonCount = 0;
+  currentPath = "/";
+  activeList.selectedIndex = 0;
+  activeList.scrollPx = 0;
+  loadSDFiles(currentPath);
+  drawSDFileBrowser();
+}
+
+void loadSDFiles(String path) {
+  sdFileCount = 0;
+  File dir = SD.open(path);
+  if (!dir) {
+    Serial.println("Failed to open dir");
+    return;
+  }
+  for (File e = dir.openNextFile(); e && sdFileCount < 50; e = dir.openNextFile()) {
+    String name = String(e.name());
+    if (name.startsWith("/")) name = name.substring(1);
+    sdFiles[sdFileCount++] = e.isDirectory() ? ("DIR - " + name) : (name + " - " + formatBytes(e.size()));
+    e.close();
+  }
+  dir.close();
+}
+
+void drawSDFileBrowser() {
+  buttonCount = 0;
+  clearScreen();
+  tft.setTextSize(1);
+  tft.setTextColor(currentTheme.primary);
+  tft.setCursor(5, 14);
+  tft.print("Path: ");
+  tft.println(currentPath);
+
+  if (sdFileCount == 0) {
+    printCentered("No files", 150, currentTheme.primary, 2);
+    printCentered("found!", 170, currentTheme.primary, 2);
+    drawBackBtn(60, 200, 120, 40, sdData);
+    drawTitle("SD Card > Files", 75);
+    return;
+  }
+  setupAndRenderScrollList(sdFileCount, 26, [](int idx, int y, int rowH, bool sel) {
+    listSprite.fillRect(0, y, LIST_VIEW_W, rowH - 2, sel ? currentTheme.primary : TFT_BLACK);
+    listSprite.setTextColor(sel ? TFT_BLACK : TFT_WHITE);
+    listSprite.setTextSize(1);
+    listSprite.setCursor(5, y + 6);
+    String name = sdFiles[idx];
+    if (name.length() > 35) name = name.substring(0, 32) + "...";
+    listSprite.println(name);
+  });
+  activeList.onOpen = []() {
+    if (activeList.selectedIndex < 0 || activeList.selectedIndex >= sdFileCount) return;
+    String sel = sdFiles[activeList.selectedIndex];
+    if (!sel.startsWith("DIR - ")) return;
+    String dir = sel.substring(6);
+    currentPath = (currentPath == "/") ? ("/" + dir) : (currentPath + "/" + dir);
+    loadSDFiles(currentPath);
+    activeList.selectedIndex = 0;
+    activeList.scrollPx = 0;
+    drawSDFileBrowser();
+  };
+
+  bool isDir = (activeList.selectedIndex >= 0 && activeList.selectedIndex < sdFileCount) && sdFiles[activeList.selectedIndex].startsWith("DIR - ");
+  const char *backLabel = (currentPath == "/") ? "Back" : "Up";
+  void (*backCb)() = (currentPath == "/") ? sdData : (void (*)())[]() {
+    int slash = currentPath.lastIndexOf('/');
+    currentPath = (slash > 0) ? currentPath.substring(0, slash) : "/";
+    loadSDFiles(currentPath);
+    activeList.selectedIndex = 0;
+    activeList.scrollPx = 0;
+    drawSDFileBrowser();
+  };
+
+  if (isDir) {
+    createTouchBox(60, LIST_BUTTON_Y, 120, 28, currentTheme.secondary, currentTheme.secondary, backLabel, backCb, true);
+  } else {
+    createTouchBox(15, LIST_BUTTON_Y, 135, 28, currentTheme.secondary, currentTheme.secondary, backLabel, backCb, true);
+    createTouchBox(160, LIST_BUTTON_Y, 65, 28, 0xF800, TFT_WHITE, "Del", deleteSelectedFile);
+  }
+  drawTitle("SD Card > Files", 75);
+}
+
+void sdFormatOptions() {
+  buttonCount = 0;
+  clearScreen();
+  createOptions(SD_FORMAT_OPTIONS, 2, 10, 100);
+  drawTitle("SD Card > Format", 75);
+}
+
+void formatSD() {
+  File root = SD.open("/");
+  if (!root) return;
+  clearScreen();
+  tft.setTextColor(currentTheme.primary);
+  tft.setTextSize(2);
+  tft.setCursor(30, 100);
+  tft.println("Formatting...");
+
+  for (File e = root.openNextFile(); e; e = root.openNextFile()) {
+    String name = String(e.name());
+    bool isDir = e.isDirectory();
+    e.close();
+    if (name == "System Volume Information" || name == "built-in-signals") {
+      formatStatusLine("Skipping:", currentTheme.primary, name);
+      delay(1000);
+      continue;
+    }
+    formatStatusLine("Deleting:", currentTheme.primary, name);
+    bool ok = isDir ? deleteDirectory(("/" + name).c_str()) : SD.remove(("/" + name).c_str());
+    formatStatusLine(ok ? "Deleted:" : "Failed:", ok ? (uint16_t)0x07E0 : (uint16_t)0xF800, name);
+    delay(1000);
+  }
+  root.close();
+  clearScreen();
+  printCentered("Formatting done!", 140, 0x07E0, 2);
   tft.setTextSize(1);
   tft.setTextColor(TFT_WHITE);
-  tft.setCursor(5, 70);
-  tft.print("Save as: ");
+  tft.setCursor(30, 170);
+  tft.println("Preserved: built-in-signals");
+  delay(2000);
+  if (!SD.exists("/saved-signals")) SD.mkdir("/saved-signals");
+  drawMenuUI();
+}
+
+void listGroupedSignals() {
+  groupedSignalCount = 0;
+  File dir = SD.open("/saved-signals");
+  if (dir) {
+    for (File e = dir.openNextFile(); e && groupedSignalCount < 50; e = dir.openNextFile()) {
+      if (!e.isDirectory()) {
+        String name = String(e.name());
+        if (extractPrefix(name) == currentSavedGroup)
+          groupedSignalFiles[groupedSignalCount++] = name;
+      }
+      e.close();
+    }
+    dir.close();
+  }
+  activeList.selectedIndex = 0;
+  activeList.scrollPx = 0;
+  drawGroupedSignalsList();
+}
+
+void drawGroupedSignalsList() {
+  buttonCount = 0;
+  clearScreen();
+  if (groupedSignalCount == 0) {
+    printCentered("No signals", 120, currentTheme.primary, 2);
+    printCentered("in group!", 140, currentTheme.primary, 2);
+    drawBackBtn(60, 200, 120, 40, listSavedSignals);
+    drawTitle("Group signals", 75);
+    return;
+  }
+  setupAndRenderScrollList(groupedSignalCount, 32, [](int idx, int y, int rowH, bool sel) {
+    listSprite.fillRect(0, y, LIST_VIEW_W, rowH - 2, sel ? currentTheme.primary : TFT_BLACK);
+    listSprite.setTextColor(sel ? TFT_BLACK : TFT_WHITE);
+    listSprite.setTextSize(2);
+    listSprite.setCursor(5, y + 6);
+    String name = groupedSignalFiles[idx];
+    name.replace(".bin", "");
+    int h = name.indexOf('-');
+    if (h >= 0) name = name.substring(h + 1);
+    listSprite.println(name);
+  });
+  createTouchBox(
+    15, LIST_BUTTON_Y, 100, 28, currentTheme.secondary, currentTheme.secondary, "Back",
+    []() {
+      listSavedSignals();
+    },
+    true);
+  createTouchBox(125, LIST_BUTTON_Y, 100, 28, currentTheme.primary, currentTheme.primary, "Send", []() {
+    if (activeList.selectedIndex < 0 || activeList.selectedIndex >= groupedSignalCount) return;
+    File f = SD.open(("/saved-signals/" + groupedSignalFiles[activeList.selectedIndex]).c_str(), FILE_READ);
+    if (f) {
+      IRSignal signal;
+      f.read((uint8_t *)&signal, sizeof(IRSignal));
+      f.close();
+      digitalWrite(SD_CS, HIGH);
+      digitalWrite(TOUCH_CS, HIGH);
+      delay(10);
+      transmitSignal(signal);
+    }
+  });
+  drawTitle((currentSavedGroup + " signals").c_str(), 70);
+}
+
+void deleteSelectedFile() {
+  if (activeList.selectedIndex < 0 || activeList.selectedIndex >= sdFileCount) return;
+  String sel = sdFiles[activeList.selectedIndex];
+  if (sel.startsWith("DIR - ")) return;
+  int dash = sel.lastIndexOf(" - ");
+  String name = (dash > 0) ? sel.substring(0, dash) : sel;
+  String path = (currentPath == "/") ? ("/" + name) : (currentPath + "/" + name);
+  if (SD.remove(path.c_str())) {
+    loadSDFiles(currentPath);
+    if (activeList.selectedIndex >= sdFileCount && sdFileCount > 0)
+      activeList.selectedIndex = sdFileCount - 1;
+    drawSDFileBrowser();
+  } else {
+    printCentered("Delete", 100, 0xF800, 2);
+    printCentered("failed!", 120, 0xF800, 2);
+    delay(1500);
+    drawSDFileBrowser();
+  }
+}
+
+// ============================================================
+// Screens — Theme
+// ============================================================
+void themeOptions() {
+  createOptions(THEME_OPTIONS, 4, 10, 47, 220, 45);
+  drawTitle("Change theme", 85);
+}
+
+void setThemeFuturisticRed() {
+  setTheme(0);
+}
+void setThemeFuturisticGreen() {
+  setTheme(1);
+}
+void setThemeFuturisticPurple() {
+  setTheme(2);
+}
+
+ThemeColors themeFromIndex(uint8_t idx) {
+  switch (idx) {
+    case 1: return THEME_FUTURISTIC_GREEN;
+    case 2: return THEME_FUTURISTIC_PURPLE;
+    default: return THEME_FUTURISTIC_RED;
+  }
+}
+
+void setTheme(uint8_t themeIndex) {
+  prefs.begin("uniremote", false);
+  prefs.putUChar("theme", themeIndex);
+  prefs.end();
+  ThemeColors newTheme = themeFromIndex(themeIndex);
+
+  tft.fillScreen(TFT_BLACK);
+  delay(60);
+  for (int r = 0; r <= 210; r += 7) {
+    tft.fillCircle(120, 160, r, newTheme.primary);
+    tft.drawCircle(120, 160, r + 1, TFT_BLACK);
+    tft.drawCircle(120, 160, r + 2, newTheme.accent);
+    delay(10);
+  }
+  tft.fillRect(0, 0, 240, 320, newTheme.primary);
+  delay(80);
+  currentTheme = newTheme;
+  drawMenuUI();
+}
+
+// ============================================================
+// Keyboard
+// ============================================================
+void drawKeyboard() {
+  buttonCount = 0;
+  clearScreen();
+
+  tft.setTextSize(1);
+  tft.setTextColor(currentTheme.accent);
+  tft.setCursor(5, 13);
+  tft.print("Save as:");
+  tft.drawRect(5, 22, 230, 18, currentTheme.primary);
   tft.setTextColor(currentTheme.primary);
-  tft.setCursor(5, 80);
+  tft.setCursor(8, 26);
   tft.print(outputText);
 
-  tft.setTextColor(currentTheme.secondary);
-  tft.setCursor(5, 90);
-  if (currentDecodedHex != 0) {
-    tft.printf("HEX: 0x%lX", (unsigned long)currentDecodedHex);
+  tft.setTextColor(currentTheme.accent);
+  tft.setCursor(5, 44);
+  tft.printf("Raw: %d pulses", currentRawDataLen);
+  tft.setTextColor(0xF800);
+  tft.setCursor(120, 44);
+  tft.print("HEX:");
+  tft.setTextColor(TFT_WHITE);
+  if (currentDecodedHex) {
+    tft.printf(" 0x%lX", (unsigned long)currentDecodedHex);
   } else {
-    tft.print("HEX: N/A (raw)");
+    tft.print(" N/A");
   }
+  tft.drawFastHLine(0, 55, 240, currentTheme.darkest);
 
-  const int cellWidth = 32;
-  const int cellHeight = 32;
-  const int startX = 8;
-  const int startY = 105;
+  const int kW = 22, kH = 42, kG = 2, kS = kW + kG;
+  const int r0y = 74, r1y = r0y + kH + 3, r2y = r1y + kH + 3;
 
-  // 26 betű, 7 oszlop -> 4 sor (utolsó sor 5 elemmel: V W X Y Z)
-  for (int i = 0; i < 26; i++) {
-    int row = i / 7;
-    int col = i % 7;
-    createTouchBox(startX + col * cellWidth, startY + row * cellHeight,
-                   cellWidth, cellHeight,
-                   currentTheme.primary, TFT_WHITE,
-                   alphabet[i], keyboardButtonPressed);
-  }
+  int x0 = (240 - (10 * kW + 9 * kG)) / 2;
+  for (int i = 0; i < 10; i++)
+    createTouchBox(x0 + i * kS, r0y, kW, kH, currentTheme.primary, TFT_WHITE, qwerty0[i], keyboardButtonPressed);
 
-  // Kontroll sor: kötőjel / backspace / mentés
-  int controlsY = startY + 4 * cellHeight;
-  int controlWidth = 70;
-  int gap = 6;
+  x0 = (240 - (9 * kW + 8 * kG)) / 2;
+  for (int i = 0; i < 9; i++)
+    createTouchBox(x0 + i * kS, r1y, kW, kH, currentTheme.primary, TFT_WHITE, qwerty1[i], keyboardButtonPressed);
 
-  createTouchBox(startX, controlsY, controlWidth, cellHeight,
-                 currentTheme.primary, TFT_WHITE, "-", keyboardButtonPressed);
+  x0 = (240 - (7 * kW + 6 * kG)) / 2;
+  for (int i = 0; i < 7; i++)
+    createTouchBox(x0 + i * kS, r2y, kW, kH, currentTheme.primary, TFT_WHITE, qwerty2[i], keyboardButtonPressed);
 
-  createTouchBox(startX + controlWidth + gap, controlsY, controlWidth, cellHeight,
-                 0xF800, TFT_WHITE, "<", keyboardButtonPressed);
-
-  createTouchBox(startX + 2 * (controlWidth + gap), controlsY, controlWidth, cellHeight,
-                 0x07E0, TFT_WHITE, ">", keyboardButtonPressed);
-
-  int backBtnY = controlsY + cellHeight + 10;
-  int backBtnWidth = 80;
-  int backBtnHeight = 25;
-  int backBtnX = (240 - backBtnWidth) / 2;
+  const int cW = 52, cH = 40, cG = 8, ctrlY = r2y + kH + 16;
+  const int cX = (240 - (4 * cW + 3 * cG)) / 2;
+  createTouchBox(cX, ctrlY, cW, cH, 0xF800, TFT_WHITE, "<", keyboardButtonPressed);
+  createTouchBox(cX + (cW + cG), ctrlY, cW, cH, currentTheme.dark, TFT_WHITE, "_", keyboardButtonPressed);
+  createTouchBox(cX + 2 * (cW + cG), ctrlY, cW, cH, currentTheme.dark, TFT_WHITE, "-", keyboardButtonPressed);
+  createTouchBox(cX + 3 * (cW + cG), ctrlY, cW, cH, 0x07E0, TFT_WHITE, ">", keyboardButtonPressed);
 
   createTouchBox(
-    backBtnX, backBtnY, backBtnWidth, backBtnHeight,
-    currentTheme.secondary, currentTheme.secondary,
-    "Back",
+    80, ctrlY + cH + 8, 80, 26, currentTheme.secondary, currentTheme.secondary, "Back",
     []() {
       outputText[0] = '\0';
       signalCaptured = false;
-      onKeyboard = false;
       buttonCount = 0;
       signalOptions();
     },
     true);
 
-  drawTitle("Enter signal name", 65);
+  drawTitle("Enter signal name", 55);
 }
 
 void keyboardButtonPressed() {
-  TouchButton *btn = &buttons[activeBtnIndex];
-  const char *label = btn->label;
+  const char *label = buttons[activeBtnIndex].label;
 
   if (strcmp(label, "<") == 0) {
     int len = strlen(outputText);
     if (len > 0) outputText[len - 1] = '\0';
 
   } else if (strcmp(label, ">") == 0) {
-    if (strlen(outputText) > 0) {
-      IRSignal signal;
-      strncpy(signal.name, outputText, MAX_SAVED_SIGNAL_CHARS);
-      signal.name[MAX_SAVED_SIGNAL_CHARS] = '\0';
-      memcpy(signal.rawData, currentRawData, sizeof(signal.rawData));
-      signal.rawDataLen = currentRawDataLen;
-      saveSignalToSD(signal);
+    if (strlen(outputText) == 0) return;
+    IRSignal signal;
+    strncpy(signal.name, outputText, MAX_SAVED_SIGNAL_CHARS);
+    signal.name[MAX_SAVED_SIGNAL_CHARS] = '\0';
+    memcpy(signal.rawData, currentRawData, sizeof(signal.rawData));
+    signal.rawDataLen = currentRawDataLen;
+    saveSignalToSD(signal);
+    clearScreen();
+    printCentered("Saved!", 150, currentTheme.primary, 2);
+    delay(2000);
+    outputText[0] = '\0';
+    signalCaptured = false;
+    buttonCount = 0;
+    signalOptions();
+    return;
 
-      tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-      printCentered("Saved!", 150, currentTheme.primary, 2);
-      delay(2000);
-
-      outputText[0] = '\0';
-      signalCaptured = false;
-      onKeyboard = false;
-      buttonCount = 0;
-      signalOptions();
-      return;
+  } else if (strcmp(label, "-") == 0) {
+    if (strlen(outputText) > 0 && strchr(outputText, '-') == nullptr) {
+      int len = strlen(outputText);
+      if (len < MAX_SAVED_SIGNAL_CHARS) {
+        outputText[len] = '-';
+        outputText[len + 1] = '\0';
+      }
     }
 
   } else {
@@ -864,987 +1145,187 @@ void keyboardButtonPressed() {
     }
   }
 
-  tft.fillRect(5, 80, 230, 8, TFT_BLACK);
+  tft.fillRect(6, 23, 228, 16, TFT_BLACK);
   tft.setTextSize(1);
   tft.setTextColor(currentTheme.primary);
-  tft.setCursor(5, 80);
+  tft.setCursor(8, 26);
   tft.print(outputText);
 }
 
-// FIXED: Removed needsFullRedraw optimization
-void listBuiltInSignals() {
-  buttonCount = 0;
-  onBuiltInSignals = true;
-  onBuiltInBrands = false;
-
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-
-  if (currentBrandCodes == nullptr || currentBrandCodesLength == 0) {
-    printCentered("Brand not", 120, currentTheme.primary, 2);
-    printCentered("found!", 140, currentTheme.primary, 2);
-    drawBackBtn(60, 200, 120, 40, builtInSignalsBrowser);
-    drawTitle("Brand signals", 75);
+// ============================================================
+// IR
+// ============================================================
+void captureSignal() {
+  if (IrReceiver.decodedIRData.rawlen == 0) {
+    IrReceiver.resume();
     return;
   }
-
-  const IRCode *brandCodes = currentBrandCodes;
-  builtInSignalCount = currentBrandCodesLength;
-
-  if (builtInSignalCount == 0) {
-    tft.setTextSize(2);
-    tft.setTextColor(currentTheme.primary);
-    tft.setCursor(30, 120);
-    tft.println("No signals");
-    tft.setCursor(50, 140);
-    tft.println("in brand!");
-
-    drawBackBtn(60, 200, 120, 40, builtInSignalsBrowser);
-    drawTitle("Brand signals", 75);
-    return;
-  }
-
-  int maxVisible = 5;
-  int yPos = 70;
-  int lineHeight = 30;
-
-  for (int i = builtInSignalScrollOffset; i < min(builtInSignalScrollOffset + maxVisible, builtInSignalCount); i++) {
-    int highlightY = yPos;
-    int highlightHeight = 25;
-
-    if (i == builtInSignalHighlightedIndex) {
-      tft.fillRect(5, highlightY, 230, highlightHeight, currentTheme.primary);
-      tft.setTextColor(TFT_BLACK);
-    } else {
-      tft.setTextColor(TFT_WHITE);
-    }
-
-    tft.setTextSize(2);
-    tft.setCursor(10, yPos + 5);
-    tft.println(brandCodes[i].codeName);
-    yPos += lineHeight;
-  }
-
-  if (builtInSignalScrollOffset > 0) {
-    tft.fillTriangle(225, 85, 220, 90, 230, 90, TFT_WHITE);
-  }
-  if (builtInSignalScrollOffset + maxVisible < builtInSignalCount) {
-    tft.fillTriangle(225, 225, 220, 220, 230, 220, TFT_WHITE);
-  }
-
-  createTouchBox(10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
-    if (builtInSignalHighlightedIndex > 0) {
-      builtInSignalHighlightedIndex--;
-      if (builtInSignalHighlightedIndex < builtInSignalScrollOffset) {
-        builtInSignalScrollOffset = builtInSignalHighlightedIndex;
-      }
-      listBuiltInSignals();
-    }
-  }, false, true);
-
-  // FIXED: Changed builtInBrandScrollOffset to builtInSignalScrollOffset
-  createTouchBox(85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
-    if (builtInSignalHighlightedIndex < builtInSignalCount - 1) {
-      builtInSignalHighlightedIndex++;
-      if (builtInSignalHighlightedIndex >= builtInSignalScrollOffset + 5) {
-        builtInSignalScrollOffset = builtInSignalHighlightedIndex - 5 + 1;
-      }
-      listBuiltInSignals();
-    }
-  }, false, true);
-
-  // listBuiltInSignals() "Send" gombja:
-  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Send", []() {
-    const IRCode *selectedCode = &currentBrandCodes[builtInSignalHighlightedIndex];
-    IRSignal signal;
-    strncpy(signal.name, selectedCode->codeName, sizeof(signal.name) - 1);
-    signal.name[sizeof(signal.name) - 1] = '\0';
-    signal.rawDataLen = (uint8_t)prontoToRawSignal(selectedCode->codeArray, signal.rawData, 200);
-    transmitSignal(signal);
-  });
-
-  tft.fillRect(10, 270, 220, 25, TFT_BLACK);
-  createTouchBox(
-    10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", []() {
-      onBuiltInSignals = false;
-      builtInSignalsBrowser();
-    },
-    true);
-
-  String title = currentBrandPath + " signals";
-  drawTitle(title.c_str(), 70);
+  currentRawDataLen = min((uint16_t)(IrReceiver.decodedIRData.rawlen - 1), (uint16_t)200);
+  for (uint16_t i = 0; i < currentRawDataLen; i++)
+    currentRawData[i] = IrReceiver.irparams.rawbuf[i + 1] * MICROS_PER_TICK;
+  currentDecodedHex = IrReceiver.decodedIRData.decodedRawData;
+  signalCaptured = true;
+  IrReceiver.resume();
 }
 
-// FIXED: Removed needsFullRedraw optimization
-void builtInSignalsBrowser() {
-  buttonCount = 0;
-  onBuiltInBrands = true;
-  builtInBrandCount = 0;
-
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-
-  builtInBrandCount = hardcodedBrandsLength;
-  for (int i = 0; i < hardcodedBrandsLength; i++) {
-    builtInBrands[i] = hardcodedBrands[i].brandName;
+void saveSignalToSD(const IRSignal &signal) {
+  String path = "/saved-signals/" + String(signal.name) + ".bin";
+  File f = SD.open(path.c_str(), FILE_WRITE);
+  if (f) {
+    f.write((uint8_t *)&signal, sizeof(IRSignal));
+    f.close();
   }
-
-  if (builtInBrandCount == 0) {
-    tft.setTextSize(2);
-    tft.setTextColor(currentTheme.primary);
-    tft.setCursor(30, 120);
-    tft.println("No brands");
-    tft.setCursor(50, 140);
-    tft.println("found!");
-
-    drawBackBtn(60, 200, 120, 40, drawMenuUI);
-    drawTitle("Built-in signals", 70);
-    return;
-  }
-
-  int maxVisible = 5;
-  int yPos = 70;
-  int lineHeight = 30;
-
-  for (int i = builtInBrandScrollOffset; i < min(builtInBrandScrollOffset + maxVisible, builtInBrandCount); i++) {
-    int highlightY = yPos;
-    int highlightHeight = 25;
-
-    if (i == builtInBrandHighlightedIndex) {
-      tft.fillRect(5, highlightY, 230, highlightHeight, currentTheme.primary);
-      tft.setTextColor(TFT_BLACK);
-    } else {
-      tft.setTextColor(TFT_WHITE);
-    }
-
-    tft.setTextSize(2);
-    tft.setCursor(10, yPos + 5);
-    tft.println(builtInBrands[i]);
-    yPos += lineHeight;
-  }
-
-  if (builtInBrandScrollOffset > 0) {
-    tft.fillTriangle(225, 85, 220, 90, 230, 90, TFT_WHITE);
-  }
-  if (builtInBrandScrollOffset + maxVisible < builtInBrandCount) {
-    tft.fillTriangle(225, 225, 220, 220, 230, 220, TFT_WHITE);
-  }
-
-  createTouchBox(10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
-    if (builtInBrandHighlightedIndex > 0) {
-      builtInBrandHighlightedIndex--;
-      if (builtInBrandHighlightedIndex < builtInBrandScrollOffset) {
-        builtInBrandScrollOffset = builtInBrandHighlightedIndex;
-      }
-      builtInSignalsBrowser();
-    }
-  }, false, true);
-
-  createTouchBox(85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
-    if (builtInBrandHighlightedIndex < builtInBrandCount - 1) {
-      builtInBrandHighlightedIndex++;
-      if (builtInBrandHighlightedIndex >= builtInBrandScrollOffset + 5) {
-        builtInBrandScrollOffset = builtInBrandHighlightedIndex - 5 + 1;
-      }
-      builtInSignalsBrowser();
-    }
-  }, false, true);
-
-  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Open", []() {
-    int idx = builtInBrandHighlightedIndex;
-    currentBrandCodes = hardcodedBrands[idx].codes;
-    currentBrandCodesLength = hardcodedBrands[idx].codesLength;
-    currentBrandPath = builtInBrands[idx];
-    builtInSignalHighlightedIndex = 0;
-    builtInSignalScrollOffset = 0;
-    listBuiltInSignals();
-  });
-
-  tft.fillRect(10, 270, 220, 25, TFT_BLACK);
-  createTouchBox(10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", drawMenuUI, true);
-
-  drawTitle("Built-in signals", 70);
 }
 
-void sdData() {
-  createOptions(SD_CARD_OPTIONS, 4, 10, 70);
-  drawTitle("SD Card options", 75);
+void transmitSignal(const IRSignal &signal) {
+  IrSender.sendRaw(signal.rawData, signal.rawDataLen, 38);
 }
 
-void showFileOptions() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-
-  String selectedFile = sdFiles[sdHighlightedIndex];
-
-  String actualFileName = selectedFile;
-  if (!selectedFile.startsWith("[DIR] ")) {
-    int parenIndex = actualFileName.lastIndexOf('(');
-    if (parenIndex > 0) {
-      actualFileName = actualFileName.substring(0, parenIndex - 1);
-    }
-  } else {
-    actualFileName = actualFileName.substring(6);
-  }
-
-  tft.setTextSize(2);
-  tft.setTextColor(currentTheme.primary);
-  tft.setCursor(10, 80);
-  tft.print("Selected:");
-  tft.setCursor(10, 105);
-
-  if (actualFileName.length() > 20) {
-    actualFileName = actualFileName.substring(0, 17) + "...";
-  }
-  tft.println(actualFileName);
-
-  if (!selectedFile.startsWith("[DIR] ")) {
-    createTouchBox(30, 140, 180, 30, currentTheme.primary, currentTheme.primary, "Delete File", []() {
-      Serial.println("Delete file functionality to be implemented");
-    });
-
-    createTouchBox(30, 180, 180, 30, currentTheme.primary, currentTheme.primary, "Rename File", []() {
-      Serial.println("Rename file functionality to be implemented");
-    });
-  }
-
-  createTouchBox(60, 240, 120, 30, currentTheme.secondary, currentTheme.secondary, "Back", drawSDFileBrowser, true);
-
-  drawTitle("File Options", 85);
+uint16_t prontoToRawSignal(const uint16_t *pronto, uint16_t *outRaw, uint8_t maxOut) {
+  float unit = pronto[1] * 0.241246f;
+  uint16_t totalVals = (pronto[2] + pronto[3]) * 2;
+  totalVals = min(totalVals, (uint16_t)min((int)maxOut, 150 - 4));
+  for (uint16_t i = 0; i < totalVals; i++) outRaw[i] = (uint16_t)(pronto[4 + i] * unit);
+  return totalVals;
 }
 
-void listSDInfo() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-  drawTitle("SD Card > Info", 75);
-
-  uint64_t totalBytes = SD.totalBytes();
-  uint64_t usedBytes = SD.usedBytes();
-  uint64_t freeBytes = totalBytes - usedBytes;
-  int savedSignalsCount = countFilesInDirectory("/saved-signals");
-
-  int yPos = 110;
-  tft.setTextSize(3);
-  tft.setTextColor(currentTheme.primary);
-  tft.setCursor(5, 72);
-  tft.println("Storage");
-  tft.drawFastHLine(0, yPos - 12, 240, currentTheme.primary);
-  tft.drawFastHLine(0, yPos - 10, 240, currentTheme.primary);
-
-  tft.setTextSize(2);
-  tft.setCursor(10, yPos);
-  tft.print("Full: ");
-  tft.println(formatBytes(totalBytes));
-  yPos += 20;
-  tft.setCursor(10, yPos);
-  tft.print("Free: ");
-  tft.println(formatBytes(freeBytes));
-  yPos += 20;
-  tft.setCursor(10, yPos);
-  tft.print("Used: ");
-  tft.println(formatBytes(usedBytes));
-  yPos += 40;
-
-  tft.setTextSize(3);
-  tft.setCursor(5, yPos);
-  tft.println("Signals");
-  tft.drawFastHLine(0, yPos + 26, 240, currentTheme.primary);
-  tft.drawFastHLine(0, yPos + 28, 240, currentTheme.primary);
-  yPos += 40;
-
-  tft.setTextSize(2);
-  tft.setCursor(10, yPos);
-  tft.print("Saved: ");
-  tft.println(savedSignalsCount);
-
-  drawBackBtn(185, 130, 55, 50, sdData);
-}
-
+// ============================================================
+// SD helpers
+// ============================================================
 String formatBytes(uint64_t bytes) {
-  if (bytes < 1024) {
-    return String(bytes) + " B";
-  } else if (bytes < 1024 * 1024) {
-    return String(bytes / 1024.0, 1) + " KB";
-  } else if (bytes < 1024 * 1024 * 1024) {
-    return String(bytes / (1024.0 * 1024.0), 1) + " MB";
-  } else {
-    return String(bytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
-  }
+  if (bytes < 1024) return String(bytes) + " B";
+  if (bytes < 1024 * 1024) return String(bytes / 1024.0, 1) + " KB";
+  if (bytes < 1024ULL * 1024 * 1024) return String(bytes / (1024.0 * 1024.0), 1) + " MB";
+  return String(bytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
 }
 
-int countFilesInDirectory(const char *directoryPath) {
-  File dir = SD.open(directoryPath);
+int countFilesInDirectory(const char *path) {
+  File dir = SD.open(path);
+  if (!dir || !dir.isDirectory()) return 0;
   int count = 0;
-
-  if (!dir) {
-    return 0;
+  for (File e = dir.openNextFile(); e; e = dir.openNextFile()) {
+    if (!e.isDirectory()) count++;
+    e.close();
   }
-
-  if (!dir.isDirectory()) {
-    dir.close();
-    return 0;
-  }
-
-  File entry = dir.openNextFile();
-  while (entry) {
-    if (!entry.isDirectory()) {
-      count++;
-    }
-    entry.close();
-    entry = dir.openNextFile();
-  }
-
   dir.close();
   return count;
 }
 
-void listSDFiles() {
-  buttonCount = 0;
-  onSDFiles = true;
-  sdFileCount = 0;
-  sdHighlightedIndex = 0;
-  sdScrollOffset = 0;
-  currentPath = "/";
-
-  loadSDFiles(currentPath);
-  drawSDFileBrowser();
-}
-
-void loadSDFiles(String path) {
-  sdFileCount = 0;
-
-  File dir = SD.open(path);
-  if (!dir) {
-    Serial.println("Failed to open directory");
-    return;
-  }
-
-  File entry = dir.openNextFile();
-  while (entry && sdFileCount < 50) {
-    String fileName = String(entry.name());
-
-    if (fileName.startsWith("/")) {
-      fileName = fileName.substring(1);
-    }
-
-    if (entry.isDirectory()) {
-      sdFiles[sdFileCount] = "DIR - " + fileName;
-    } else {
-      String sizeStr = formatBytes(entry.size());
-      sdFiles[sdFileCount] = fileName + " - " + sizeStr;
-    }
-
-    sdFileCount++;
-    entry.close();
-    entry = dir.openNextFile();
-  }
-  dir.close();
-}
-
-void drawSDFileBrowser() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-
-  tft.setTextSize(1);
-  tft.setTextColor(currentTheme.primary);
-  tft.setCursor(5, 65);
-  tft.print("Path: ");
-  tft.println(currentPath);
-
-  if (sdFileCount == 0) {
-    tft.setTextSize(2);
-    tft.setTextColor(currentTheme.primary);
-    tft.setCursor(30, 120);
-    tft.println("No files");
-    tft.setCursor(50, 140);
-    tft.println("found!");
-
-    drawBackBtn(60, 180, 120, 40, sdData);
-    drawTitle("SD Card > Files", 75);
-    return;
-  }
-
-  int yPos = 80;
-  int lineHeight = 25;
-
-  for (int i = sdScrollOffset; i < min(sdScrollOffset + sdMaxVisible, sdFileCount); i++) {
-    int highlightY = yPos;
-    int highlightHeight = 22;
-
-    if (i == sdHighlightedIndex) {
-      tft.fillRect(5, highlightY, 230, highlightHeight, currentTheme.primary);
-      tft.setTextColor(TFT_BLACK);
-    } else {
-      tft.fillRect(5, highlightY, 230, highlightHeight, TFT_BLACK);
-      tft.setTextColor(TFT_WHITE);
-    }
-
-    tft.setTextSize(1);
-    tft.setCursor(10, yPos + 5);
-
-    String displayName = sdFiles[i];
-    if (displayName.length() > 35) {
-      displayName = displayName.substring(0, 32) + "...";
-    }
-    tft.println(displayName);
-
-    yPos += lineHeight;
-  }
-
-  if (sdScrollOffset > 0) {
-    tft.fillTriangle(225, 85, 220, 90, 230, 90, TFT_WHITE);
-  }
-  if (sdScrollOffset + sdMaxVisible < sdFileCount) {
-    tft.fillTriangle(225, 220, 220, 215, 230, 215, TFT_WHITE);
-  }
-
-  createTouchBox(10, 240, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
-    if (sdHighlightedIndex > 0) {
-      sdHighlightedIndex--;
-      if (sdHighlightedIndex < sdScrollOffset) {
-        sdScrollOffset = sdHighlightedIndex;
-      }
-      drawSDFileBrowser();
-    }
-  }, false, true);
-
-  createTouchBox(85, 240, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
-    if (sdHighlightedIndex < sdFileCount - 1) {
-      sdHighlightedIndex++;
-      if (sdHighlightedIndex >= sdScrollOffset + sdMaxVisible) {
-        sdScrollOffset = sdHighlightedIndex - sdMaxVisible + 1;
-      }
-      drawSDFileBrowser();
-    }
-  }, false, true);
-
-  String selectedFile = sdFiles[sdHighlightedIndex];
-  bool isDirectory = selectedFile.startsWith("DIR - ");
-
-  if (isDirectory) {
-    createTouchBox(160, 240, 70, 30, currentTheme.primary, currentTheme.primary, "Open", []() {
-      String selectedFile = sdFiles[sdHighlightedIndex];
-      String dirName = selectedFile.substring(6);
-
-      if (currentPath == "/") {
-        currentPath = "/" + dirName;
-      } else {
-        currentPath = currentPath + "/" + dirName;
-      }
-
-      loadSDFiles(currentPath);
-      sdHighlightedIndex = 0;
-      sdScrollOffset = 0;
-      drawSDFileBrowser();
-    });
-  } else {
-    createTouchBox(160, 240, 70, 30, 0xF800, TFT_WHITE, "Del", deleteSelectedFile);
-  }
-
-  const char *backLabel = "Back";
-  void (*backCallback)() = sdData;
-
-  if (currentPath != "/") {
-    backLabel = "Up Dir";
-    backCallback = []() {
-      int lastSlash = currentPath.lastIndexOf('/');
-      if (lastSlash > 0) {
-        currentPath = currentPath.substring(0, lastSlash);
-      } else {
-        currentPath = "/";
-      }
-
-      loadSDFiles(currentPath);
-      sdHighlightedIndex = 0;
-      sdScrollOffset = 0;
-      drawSDFileBrowser();
-    };
-  }
-
-  createTouchBox(60, 275, 120, 25, currentTheme.secondary, currentTheme.secondary, backLabel, backCallback, true);
-
-  drawTitle("SD Card > Files", 75);
-}
-
-void sdFormatOptions() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-  createOptions(SD_FORMAT_OPTIONS, 2, 10, 100);
-  drawTitle("SD Card > Format", 75);
-}
-
 bool deleteDirectory(const char *path) {
   File dir = SD.open(path);
-
-  if (!dir) {
-    return false;
-  }
-
+  if (!dir) return false;
   if (!dir.isDirectory()) {
     dir.close();
     return SD.remove(path);
   }
-
-  File entry = dir.openNextFile();
-  while (entry) {
-    String entryPath = String(path) + "/" + String(entry.name());
-
-    if (entry.isDirectory()) {
-      entry.close();
-      if (!deleteDirectory(entryPath.c_str())) {
-        dir.close();
-        return false;
-      }
-    } else {
-      entry.close();
-      if (!SD.remove(entryPath.c_str())) {
-        dir.close();
-        return false;
-      }
+  for (File e = dir.openNextFile(); e; e = dir.openNextFile()) {
+    String ePath = String(path) + "/" + e.name();
+    bool isDir = e.isDirectory();
+    e.close();
+    if (!(isDir ? deleteDirectory(ePath.c_str()) : SD.remove(ePath.c_str()))) {
+      dir.close();
+      return false;
     }
-
-    entry = dir.openNextFile();
   }
-
   dir.close();
   return SD.rmdir(path);
 }
 
-void formatSD() {
-  File root = SD.open("/");
-
-  if (!root) {
-    return;
-  }
-
-  tft.setTextColor(currentTheme.primary);
+void formatStatusLine(const char *label, uint16_t labelColor, const String &name) {
+  tft.fillRect(0, 125, 240, 55, TFT_BLACK);
   tft.setTextSize(2);
-  tft.setCursor(30, 100);
-  tft.println("Formatting...");
-
-  File entry = root.openNextFile();
-  while (entry) {
-    tft.fillRect(0, 130, 240, 50, TFT_BLACK);
-    String entryName = String(entry.name());
-    bool isDir = entry.isDirectory();
-    entry.close();
-    tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-
-    if (entryName == "System Volume Information" || entryName == "built-in-signals") {
-      tft.setCursor(10, 130);
-      tft.setTextColor(currentTheme.primary);
-      tft.print("Skipping:");
-      tft.setCursor(0, 160);
-      tft.setTextColor(TFT_WHITE);
-      tft.println(entryName);
-      entry = root.openNextFile();
-      delay(1000);
-      continue;
-    }
-
-    String fullPath = "/" + entryName;
-
-    tft.setCursor(10, 130);
-    tft.setTextColor(currentTheme.primary);
-    tft.print("Deleting:");
-    tft.setCursor(0, 160);
-    tft.setTextColor(TFT_WHITE);
-    tft.println(entryName);
-
-    bool success;
-    if (isDir) {
-      success = deleteDirectory(fullPath.c_str());
-    } else {
-      success = SD.remove(fullPath.c_str());
-    }
-
-    if (success) {
-      tft.setCursor(10, 130);
-      tft.setTextColor(0x07E0);
-      tft.println("Deleted:");
-      tft.setCursor(0, 160);
-      tft.setTextColor(TFT_WHITE);
-      tft.println(entryName);
-      delay(1000);
-    } else {
-      tft.setCursor(10, 130);
-      tft.setTextColor(0xF800);
-      tft.println("Failed:");
-      tft.setCursor(0, 160);
-      tft.setTextColor(TFT_WHITE);
-      tft.println(entryName);
-      delay(1000);
-    }
-
-    entry = root.openNextFile();
-  }
-
-  root.close();
-
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  tft.setTextColor(0x07E0);
-  tft.setTextSize(2);
-  tft.setCursor(20, 140);
-  tft.println("Formatting done!");
-
+  tft.setTextColor(labelColor);
+  tft.setCursor(10, 130);
+  tft.print(label);
   tft.setTextColor(TFT_WHITE);
-  tft.setTextSize(1);
-  tft.setCursor(30, 170);
-  tft.println("Preserved: built-in-signals");
-
-  delay(2000);
-
-  if (!SD.exists("/saved-signals")) {
-    SD.mkdir("/saved-signals");
-  }
-
-  drawMenuUI();
+  tft.setCursor(0, 155);
+  tft.println(name);
 }
 
 String extractPrefix(String filename) {
   filename.replace(".bin", "");
-
-  int hyphenIndex = filename.indexOf('-');
-
-  if (hyphenIndex > 0) {
-    return filename.substring(0, hyphenIndex);
-  }
-
-  return filename;
+  int i = filename.indexOf('-');
+  return (i > 0) ? filename.substring(0, i) : filename;
 }
 
-// FIXED: Removed needsFullRedraw optimization and added SPI management
-void drawGroupedSignalsList() {
-  buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-  drawHeaderFooter();
-
-  if (groupedSignalCount == 0) {
-    printCentered("No signals", 120, currentTheme.primary, 2);
-    printCentered("in group!", 140, currentTheme.primary, 2);
-    drawBackBtn(60, 200, 120, 40, listSavedSignals);
-    drawTitle("Group signals", 75);
-    return;
-  }
-
-  int maxVisible = 5, yPos = 70, lineHeight = 30;
-  for (int i = groupedSignalScrollOffset; i < min(groupedSignalScrollOffset + maxVisible, groupedSignalCount); i++) {
-    if (i == groupedSignalHighlightedIndex) {
-      tft.fillRect(5, yPos, 230, 25, currentTheme.primary);
-      tft.setTextColor(TFT_BLACK);
-    } else {
-      tft.setTextColor(TFT_WHITE);
-    }
-    tft.setTextSize(2);
-    tft.setCursor(10, yPos + 5);
-    String displayName = groupedSignalFiles[i];
-    displayName.replace(".bin", "");
-    int hyphenIndex = displayName.indexOf('-');
-    if (hyphenIndex >= 0) displayName = displayName.substring(hyphenIndex + 1);
-    tft.println(displayName);
-    yPos += lineHeight;
-  }
-
-  if (groupedSignalScrollOffset > 0)
-    tft.fillTriangle(225, 85, 220, 90, 230, 90, TFT_WHITE);
-  if (groupedSignalScrollOffset + maxVisible < groupedSignalCount)
-    tft.fillTriangle(225, 225, 220, 220, 230, 220, TFT_WHITE);
-
-  createTouchBox(
-    10, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Up", []() {
-      if (groupedSignalHighlightedIndex > 0) {
-        groupedSignalHighlightedIndex--;
-        if (groupedSignalHighlightedIndex < groupedSignalScrollOffset)
-          groupedSignalScrollOffset = groupedSignalHighlightedIndex;
-        drawGroupedSignalsList();
-      }
-    },
-    false, true);
-
-  createTouchBox(
-    85, 235, 70, 30, currentTheme.secondary, currentTheme.secondary, "Down", []() {
-      if (groupedSignalHighlightedIndex < groupedSignalCount - 1) {
-        groupedSignalHighlightedIndex++;
-        if (groupedSignalHighlightedIndex >= groupedSignalScrollOffset + 5)
-          groupedSignalScrollOffset = groupedSignalHighlightedIndex - 5 + 1;
-        drawGroupedSignalsList();
-      }
-    },
-    false, true);
-
-  createTouchBox(160, 235, 70, 30, currentTheme.primary, currentTheme.primary, "Send", []() {
-    String filepath = "/saved-signals/" + groupedSignalFiles[groupedSignalHighlightedIndex];
-    File file = SD.open(filepath.c_str(), FILE_READ);
-    if (file) {
-      IRSignal signal;
-      file.read((uint8_t *)&signal, sizeof(IRSignal));
-      file.close();
-      digitalWrite(SD_CS, HIGH);
-      digitalWrite(TOUCH_CS, HIGH);
-      delay(10);
-      transmitSignal(signal);
-    }
-  });
-
-  tft.fillRect(10, 270, 220, 25, TFT_BLACK);
-  createTouchBox(
-    10, 270, 220, 25, currentTheme.secondary, currentTheme.secondary, "Back", []() {
-      onSavedSignals = false;
-      listSavedSignals();
-    },
-    true);
-
-  String title = currentSavedGroup + " signals";
-  drawTitle(title.c_str(), 70);
-}
-
-void listGroupedSignals() {
-  onSavedSignals = true;
-  onSavedSignalGroups = false;
-  groupedSignalCount = 0;
-
-  File dir = SD.open("/saved-signals");
-  if (dir) {
-    File entry = dir.openNextFile();
-    while (entry && groupedSignalCount < 50) {
-      if (!entry.isDirectory()) {
-        String filename = String(entry.name());
-        if (extractPrefix(filename) == currentSavedGroup) {
-          groupedSignalFiles[groupedSignalCount++] = filename;
-        }
-      }
-      entry.close();
-      entry = dir.openNextFile();
-    }
-    dir.close();
-  }
-
-  groupedSignalHighlightedIndex = 0;
-  groupedSignalScrollOffset = 0;
-  drawGroupedSignalsList();
-}
-
-void deleteSelectedFile() {
-  String selectedFile = sdFiles[sdHighlightedIndex];
-
-  if (!selectedFile.startsWith("DIR - ")) {
-    String actualFileName = selectedFile;
-    int dashIndex = actualFileName.lastIndexOf(" - ");
-    if (dashIndex > 0) {
-      actualFileName = actualFileName.substring(0, dashIndex);
-    }
-
-    String fullPath;
-    if (currentPath == "/") {
-      fullPath = "/" + actualFileName;
-    } else {
-      fullPath = currentPath + "/" + actualFileName;
-    }
-
-    bool success = SD.remove(fullPath.c_str());
-
-    if (success) {
-      loadSDFiles(currentPath);
-
-      if (sdHighlightedIndex >= sdFileCount && sdFileCount > 0) {
-        sdHighlightedIndex = sdFileCount - 1;
-      }
-      if (sdScrollOffset > sdHighlightedIndex) {
-        sdScrollOffset = max(0, sdHighlightedIndex);
-      }
-
-      drawSDFileBrowser();
-    } else {
-      tft.fillRect(0, 60, 240, 100, TFT_BLACK);
-      tft.setTextSize(2);
-      tft.setTextColor(0xF800);
-      tft.setCursor(20, 100);
-      tft.println("Delete");
-      tft.setCursor(20, 120);
-      tft.println("failed!");
-      delay(1500);
-      drawSDFileBrowser();
-    }
-  }
-}
-
-// ===================================================================================
-// ===================================== THEMES ======================================
-// ===================================================================================
-
-void themeOptions() {
-  createOptions(THEME_OPTIONS, 4, 10, 70);
-  drawTitle("Change theme", 85);
-}
-
-void setThemeFuturisticRed() {
-  setTheme(0);
-}
-
-void setThemeFuturisticGreen() {
-  setTheme(1);
-}
-
-void setThemeFuturisticPurple() {
-  setTheme(2);
-}
-
-void setTheme(uint8_t themeIndex) {
-  switch (themeIndex) {
-    case 0:
-      currentTheme = THEME_FUTURISTIC_RED;
-      break;
-    case 1:
-      currentTheme = THEME_FUTURISTIC_GREEN;
-      break;
-    case 2:
-      currentTheme = THEME_FUTURISTIC_PURPLE;
-      break;
-    default:
-      currentTheme = THEME_FUTURISTIC_RED;
-      break;
-  }
-
-  drawMenuUI();
-}
-
-// ===================================================================================
-// ============================== TOUCH BUTTONS ======================================
-// ===================================================================================
-
+// ============================================================
+// Touch system
+// ============================================================
 int processTouchButtons(int tx, int ty) {
   for (int i = 0; i < buttonCount; i++) {
-    TouchButton *btn = &buttons[i];
-    if (isTouchInButton(btn, tx, ty)) {
-      btn->pressed = true;
-      drawButton(btn, true);
+    if (isTouchInButton(&buttons[i], tx, ty)) {
+      buttons[i].pressed = true;
+      drawButton(&buttons[i], true);
       activeBtnIndex = i;
-      if (btn->callback != NULL) {
-        btn->callback();
-      }
+      if (buttons[i].callback) buttons[i].callback();
       return i;
     }
   }
   return -1;
 }
 
-void createTouchBox(int x, int y, int width, int height, uint16_t color, uint16_t textColor, const char *label, void (*callback)(), bool isBackButton, bool repeatable) {
+void createTouchBox(int x, int y, int w, int h, uint16_t color, uint16_t textColor, const char *label, void (*cb)(), bool isBack, bool repeatable) {
   TouchButton *btn = &buttons[buttonCount];
   btn->x = x;
   btn->y = y;
-  btn->w = width;
-  btn->h = height;
+  btn->w = w;
+  btn->h = h;
   btn->color = color;
   btn->textColor = textColor;
   btn->label = label;
-  btn->callback = callback;
+  btn->callback = cb;
   btn->pressed = false;
-  btn->isBackButton = isBackButton;
+  btn->isBackButton = isBack;
   btn->repeatable = repeatable;
-
   drawButton(btn, false);
   buttonCount++;
 }
 
 bool isTouchInButton(TouchButton *btn, int tx, int ty) {
-  return (tx >= btn->x && tx <= (btn->x + btn->w) && ty >= btn->y && ty <= (btn->y + btn->h));
+  return tx >= btn->x && tx <= btn->x + btn->w && ty >= btn->y && ty <= btn->y + btn->h;
 }
 
 void drawButton(TouchButton *btn, bool active) {
   if (btn->isBackButton) active = !active;
+  const uint16_t borderColor = active ? TFT_WHITE : btn->color;
+  const int cs = 8;
 
   tft.startWrite();
-
   tft.fillRect(btn->x, btn->y, btn->w, btn->h, TFT_BLACK);
-
   if (active) {
     tft.fillRect(btn->x, btn->y, btn->w, btn->h, btn->color);
     tft.drawRect(btn->x, btn->y, btn->w, btn->h, TFT_WHITE);
-
-    const int cs = 8;
-    tft.drawFastHLine(btn->x, btn->y, cs, TFT_WHITE);
-    tft.drawFastVLine(btn->x, btn->y, cs, TFT_WHITE);
-    tft.drawFastHLine(btn->x + btn->w - cs, btn->y, cs, TFT_WHITE);
-    tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cs, TFT_WHITE);
-    tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cs, TFT_WHITE);
-    tft.drawFastVLine(btn->x, btn->y + btn->h - cs, cs, TFT_WHITE);
-    tft.drawFastHLine(btn->x + btn->w - cs, btn->y + btn->h - 1, cs, TFT_WHITE);
-    tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cs, cs, TFT_WHITE);
   } else {
     tft.drawRect(btn->x - 1, btn->y - 1, btn->w + 2, btn->h + 2, currentTheme.accent);
     tft.drawRect(btn->x - 2, btn->y - 2, btn->w + 4, btn->h + 4, currentTheme.darkest);
     tft.fillRect(btn->x, btn->y, btn->w, btn->h, TFT_BLACK);
     tft.drawRect(btn->x, btn->y, btn->w, btn->h, btn->color);
-
-    const int cs = 8;
-    tft.drawFastHLine(btn->x, btn->y, cs, btn->color);
-    tft.drawFastVLine(btn->x, btn->y, cs, btn->color);
-    tft.drawFastHLine(btn->x + btn->w - cs, btn->y, cs, btn->color);
-    tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cs, btn->color);
-    tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cs, btn->color);
-    tft.drawFastVLine(btn->x, btn->y + btn->h - cs, cs, btn->color);
-    tft.drawFastHLine(btn->x + btn->w - cs, btn->y + btn->h - 1, cs, btn->color);
-    tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cs, cs, btn->color);
-
-    for (int j = 2; j < btn->h - 2; j += 5) {
+    for (int j = 2; j < btn->h - 2; j += 5)
       tft.drawFastHLine(btn->x + 2, btn->y + j, btn->w - 4, currentTheme.darkest);
-    }
   }
+  tft.drawFastHLine(btn->x, btn->y, cs, borderColor);
+  tft.drawFastVLine(btn->x, btn->y, cs, borderColor);
+  tft.drawFastHLine(btn->x + btn->w - cs, btn->y, cs, borderColor);
+  tft.drawFastVLine(btn->x + btn->w - 1, btn->y, cs, borderColor);
+  tft.drawFastHLine(btn->x, btn->y + btn->h - 1, cs, borderColor);
+  tft.drawFastVLine(btn->x, btn->y + btn->h - cs, cs, borderColor);
+  tft.drawFastHLine(btn->x + btn->w - cs, btn->y + btn->h - 1, cs, borderColor);
+  tft.drawFastVLine(btn->x + btn->w - 1, btn->y + btn->h - cs, cs, borderColor);
 
   tft.setTextSize(2);
-  int16_t tw = (int16_t)tft.textWidth(btn->label);
-  int16_t th = (int16_t)tft.fontHeight();
-  int16_t textX = btn->x + (btn->w - tw) / 2;
-  int16_t textY = btn->y + (btn->h - th) / 2;
-
-  tft.setTextColor(active ? TFT_BLACK : btn->color,
-                   active ? btn->color : TFT_BLACK);
-  tft.setCursor(textX, textY);
+  int16_t tw = tft.textWidth(btn->label), th = tft.fontHeight();
+  tft.setTextColor(active ? TFT_BLACK : btn->color, active ? btn->color : TFT_BLACK);
+  tft.setCursor(btn->x + (btn->w - tw) / 2, btn->y + (btn->h - th) / 2);
   tft.print(btn->label);
-
   tft.endWrite();
 }
 
-void createOptions(const Option options[], int count, int x, int y, int btnWidth, int btnHeight) {
+void createOptions(const Option opts[], int count, int x, int y, int bw, int bh) {
   buttonCount = 0;
-  tft.fillRect(0, 60, 240, 258, TFT_BLACK);
-
+  tft.fillRect(0, 10, 240, 308, TFT_BLACK);
   for (int i = 0; i < count; i++) {
-    bool isBack = (i == count - 1 && strcmp(options[i].name, "Back") == 0);
-    createTouchBox(x, y + 15 + (btnHeight + 5) * i, btnWidth, btnHeight,
-                   currentTheme.primary, currentTheme.primary,
-                   options[i].name, options[i].callback, isBack);
+    bool isBack = (i == count - 1 && strcmp(opts[i].name, "Back") == 0);
+    createTouchBox(x, y + 15 + (bh + 5) * i, bw, bh, currentTheme.primary, currentTheme.primary, opts[i].name, opts[i].callback, isBack);
   }
-
   drawHeaderFooter();
-}
-
-void createGridOptions(const Option options[], int count, int rows, int cols, int startX, int startY, int spacing, int btnSize) {
-  int buttonIndex = 0;
-  for (int row = 0; row < rows && buttonIndex < count; row++) {
-    for (int col = 0; col < cols && buttonIndex < count; col++) {
-      int x = startX + col * (btnSize + spacing);
-      int y = startY + row * (btnSize + spacing);
-
-      bool isBack = (buttonIndex == count - 1 && strcmp(options[buttonIndex].name, "Back") == 0);
-
-      createTouchBox(x, y, btnSize, btnSize,
-                     currentTheme.primary, currentTheme.primary,
-                     options[buttonIndex].name, options[buttonIndex].callback, isBack);
-
-      buttonIndex++;
-    }
-  }
-}
-
-// ===================================================================================
-// ================================= IR Rx & Tx ======================================
-// ===================================================================================
-
-void sendFixSignal(const uint16_t *signalData, size_t length) {
-  IrSender.sendRaw(signalData, length, 38);
 }
