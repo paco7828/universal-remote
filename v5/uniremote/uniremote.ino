@@ -474,7 +474,7 @@ void drawHeaderFooter() {
   activeScrollList = nullptr;
   activeList.onOpen = nullptr;
   lastTapIndex = -1;
-  tft.drawFastHLine(0, 0, 239, currentTheme.primary);
+  tft.drawFastHLine(0, 6, 239, currentTheme.primary);
   for (int i = 0; i < 15; i++) {
     tft.drawPixel(i, 2 + i / 3, currentTheme.primary);
     tft.drawPixel(239 - i, 2 + i / 3, currentTheme.primary);
