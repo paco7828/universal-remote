@@ -224,6 +224,7 @@ uint32_t currentDecodedHex = 0;
 uint8_t currentRawDataLen = 0;
 bool signalCaptured = false;
 bool listeningForSignal = false;
+constexpr const char *SIGNAL_EXT = ".txt";
 
 // --- Built-in signal browser ---
 const IRCode *currentBrandCodes = nullptr;
@@ -322,6 +323,9 @@ int countFilesInDirectory(const char *path);
 bool deleteDirectory(const char *path);
 void formatStatusLine(const char *label, uint16_t labelColor, const String &name);
 String extractPrefix(String filename);
+bool loadSignalFromSD(const String &fileName, IRSignal &signal);
+bool isSignalFile(const String &fileName);
+String stripSignalExt(String fileName);
 
 // Theme
 ThemeColors themeFromIndex(uint8_t idx);
@@ -600,7 +604,7 @@ void listSavedSignals() {
   File dir = SD.open("/saved-signals");
   if (dir) {
     for (File e = dir.openNextFile(); e && savedSignalGroupCount < 50; e = dir.openNextFile()) {
-      if (!e.isDirectory()) {
+      if (!e.isDirectory() && isSignalFile(String(e.name()))) {
         String prefix = extractPrefix(String(e.name()));
         bool found = false;
         for (int i = 0; i < savedSignalGroupCount; i++) {
@@ -916,7 +920,7 @@ void listGroupedSignals() {
   File dir = SD.open("/saved-signals");
   if (dir) {
     for (File e = dir.openNextFile(); e && groupedSignalCount < 50; e = dir.openNextFile()) {
-      if (!e.isDirectory()) {
+      if (!e.isDirectory() && isSignalFile(String(e.name()))) {
         String name = String(e.name());
         if (extractPrefix(name) == currentSavedGroup)
           groupedSignalFiles[groupedSignalCount++] = name;
@@ -946,7 +950,7 @@ void drawGroupedSignalsList() {
     listSprite.setTextSize(2);
     listSprite.setCursor(5, y + 6);
     String name = groupedSignalFiles[idx];
-    name.replace(".bin", "");
+    name = stripSignalExt(name);
     int h = name.indexOf('-');
     if (h >= 0) name = name.substring(h + 1);
     listSprite.println(name);
@@ -959,11 +963,8 @@ void drawGroupedSignalsList() {
     true);
   createTouchBox(125, LIST_BUTTON_Y, 100, 28, currentTheme.primary, currentTheme.primary, "Send", []() {
     if (activeList.selectedIndex < 0 || activeList.selectedIndex >= groupedSignalCount) return;
-    File f = SD.open(("/saved-signals/" + groupedSignalFiles[activeList.selectedIndex]).c_str(), FILE_READ);
-    if (f) {
-      IRSignal signal;
-      f.read((uint8_t *)&signal, sizeof(IRSignal));
-      f.close();
+    IRSignal signal;
+    if (loadSignalFromSD(groupedSignalFiles[activeList.selectedIndex], signal)) {
       digitalWrite(SD_CS, HIGH);
       digitalWrite(TOUCH_CS, HIGH);
       delay(10);
@@ -1168,13 +1169,85 @@ void captureSignal() {
   IrReceiver.resume();
 }
 
+bool isSignalFile(const String &fileName) {
+  String n = fileName;
+  n.toLowerCase();
+  return n.endsWith(SIGNAL_EXT);
+}
+
+String stripSignalExt(String fileName) {
+  if (isSignalFile(fileName)) fileName.remove(fileName.length() - strlen(SIGNAL_EXT));
+  return fileName;
+}
+
 void saveSignalToSD(const IRSignal &signal) {
-  String path = "/saved-signals/" + String(signal.name) + ".bin";
-  File f = SD.open(path.c_str(), FILE_WRITE);
-  if (f) {
-    f.write((uint8_t *)&signal, sizeof(IRSignal));
-    f.close();
+  String path = "/saved-signals/" + String(signal.name) + SIGNAL_EXT;
+  File f = SD.open(path.c_str(), FILE_WRITE);  // ESP32 core: "w" -> truncates
+  if (!f) return;
+  f.println("# UniRemote IR signal");
+  f.println("# raw: us, alternating mark/space, starts with mark");
+  f.print("name: ");
+  f.println(signal.name);
+  f.println("carrier_khz: 38");
+  f.print("length: ");
+  f.println(signal.rawDataLen);
+  f.print("raw: ");
+  for (uint8_t i = 0; i < signal.rawDataLen; i++) {
+    if (i) f.print(',');
+    f.print(signal.rawData[i]);
   }
+  f.println();
+  f.close();
+}
+
+bool loadSignalFromSD(const String &fileName, IRSignal &signal) {
+  File f = SD.open(("/saved-signals/" + fileName).c_str(), FILE_READ);
+  if (!f) return false;
+
+  memset(&signal, 0, sizeof(signal));
+  bool gotRaw = false;
+
+  while (f.available()) {
+    String line = f.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0 || line[0] == '#') continue;
+
+    int colon = line.indexOf(':');
+    if (colon <= 0) continue;
+    String key = line.substring(0, colon);
+    key.trim();
+    key.toLowerCase();
+    String val = line.substring(colon + 1);
+    val.trim();
+
+    if (key == "name") {
+      strncpy(signal.name, val.c_str(), MAX_SAVED_SIGNAL_CHARS);
+      signal.name[MAX_SAVED_SIGNAL_CHARS] = '\0';
+    } else if (key == "raw") {
+      const char *p = val.c_str();
+      char *end;
+      signal.rawDataLen = 0;
+      while (*p && signal.rawDataLen < 200) {
+        unsigned long v = strtoul(p, &end, 10);
+        if (end == p) {
+          p++;
+          continue;
+        }  // skip ',' / whitespace / junk
+        signal.rawData[signal.rawDataLen++] = (uint16_t)min(v, 65535UL);
+        p = end;
+      }
+      gotRaw = signal.rawDataLen > 0;
+    }
+    // "length" and "carrier_khz" are informational; send path uses 38 kHz as before
+  }
+  f.close();
+
+  if (signal.name[0] == '\0') {  // fall back to filename
+    String n = stripSignalExt(fileName);
+    strncpy(signal.name, n.c_str(), MAX_SAVED_SIGNAL_CHARS);
+    signal.name[MAX_SAVED_SIGNAL_CHARS] = '\0';
+  }
+  return gotRaw;
 }
 
 void transmitSignal(const IRSignal &signal) {
@@ -1243,7 +1316,7 @@ void formatStatusLine(const char *label, uint16_t labelColor, const String &name
 }
 
 String extractPrefix(String filename) {
-  filename.replace(".bin", "");
+  filename = stripSignalExt(filename);
   int i = filename.indexOf('-');
   return (i > 0) ? filename.substring(0, i) : filename;
 }
