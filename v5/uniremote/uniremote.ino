@@ -113,15 +113,15 @@ constexpr uint16_t IR_FRAME_WINDOW_MS = 400;
 constexpr uint8_t MAX_FRAMES = 3;
 constexpr uint16_t MAX_RAW_PULSES = 400;
 constexpr uint8_t DEFAULT_CARRIER_KHZ = 38;
-constexpr uint16_t IR_DEFAULT_GAP_MS = 40;   // raw keretek közti szünet, ha nincs mentett
-constexpr uint16_t IR_VARIANT_GAP_MS = 50;   // built-in kódvariánsok közti szünet
+constexpr uint16_t IR_DEFAULT_GAP_MS = 40;
+constexpr uint16_t IR_VARIANT_GAP_MS = 50;
 constexpr float PRONTO_CLOCK_US = 0.241246f;
 
 // --- Signal storage on SD ---
 constexpr const char *SAVED_ROOT = "/saved-signals";
 constexpr const char *SIGNAL_EXT = ".txt";
 constexpr int MAX_SAVED_SIGNAL_CHARS = 25;
-constexpr int SD_FILES_MAX = 500;  // SD file browser cap
+constexpr int SD_FILES_MAX = 500;
 
 // ============================================================
 // Types
@@ -137,7 +137,7 @@ struct IRSignal {
   char name[MAX_SAVED_SIGNAL_CHARS + 1];
   SignalKind kind;
   decode_type_t protocol;
-  uint16_t bits;  // SIG_VALUE: bitszám, SIG_STATE: bájtszám*8
+  uint16_t bits;
   uint64_t value;
   uint8_t state[kStateSizeMax];
   uint8_t carrierKHz;
@@ -361,13 +361,13 @@ uint8_t capturedFrameCount = 0;
 unsigned long lastFrameMs = 0;
 bool signalCaptured = false;
 bool listeningForSignal = false;
-bool rcToggle = false;  // RC5/RC6 toggle bit, váltva minden új gombnyomásnál
+bool rcToggle = false;
 
 // --- Saved signals browser ---
 std::vector<String> savedSignalGroups;
 std::vector<String> groupedSignalFiles;
 String currentSavedGroup = "";
-String sendCachePath;  // utoljára betöltött jel (hold-to-repeat-hez)
+String sendCachePath;
 
 // --- Built-in signals browser ---
 const IRCode *currentBrandCodes = nullptr;
@@ -401,8 +401,6 @@ void pollIRCapture() {
   if (irrecv.decode(&irResults)) {
     unsigned long now = millis();
     CaptureResult cr = captureFrame(irResults, now);
-    Serial.printf("frame @%lu %s %ub %s\n", now, typeToString(irResults.decode_type).c_str(),
-                  irResults.bits, cr == CAP_OK ? "stored" : "skipped");
     if (cr == CAP_INVALID) {
       beginScreen();
       printCentered("Invalid", 120, currentTheme.primary, 2);
@@ -417,16 +415,6 @@ void pollIRCapture() {
     irrecv.disableIRIn();
     signalCaptured = true;
     listeningForSignal = false;
-    for (uint8_t i = 0; i < capturedFrameCount; i++) {
-      const IRSignal &f = capturedFrames[i];
-      Serial.printf("  #%u kind=%u %s bits=%u gap=%ums", i + 1, f.kind,
-                    typeToString(f.protocol).c_str(), f.bits, f.gapAfterMs);
-      if (f.kind == SIG_STATE) {
-        Serial.print(" state:");
-        for (uint16_t b = 0; b < f.bits / 8; b++) Serial.printf(" %02X", f.state[b]);
-      }
-      Serial.println();
-    }
     beginScreen();
     printCentered("Captured!", 150, currentTheme.primary, 2);
     delay(1500);
@@ -509,7 +497,6 @@ void pollTouch() {
 }
 
 void initHardware() {
-  Serial.begin(115200);
   prefs.begin("uniremote", true);
   currentTheme = themeFromIndex(prefs.getUChar("theme", 0));
   prefs.end();
@@ -692,7 +679,7 @@ void ensureListSprite(int w, int h) {
   if (listSprite.createSprite(w, h)) {
     listSpriteReady = true;
   } else {
-    Serial.println("Sprite alloc failed — not enough RAM");
+    // Sprite alloc failed - not enough RAM
   }
 }
 
@@ -780,7 +767,7 @@ CaptureResult captureFrame(const decode_results &r, unsigned long nowMs) {
   s.rawDataLen = n;
 
   if (r.decode_type == UNKNOWN) {
-    if (!first) return CAP_IGNORED;  // ismeretlen keret csak egyedüli lehet
+    if (!first) return CAP_IGNORED;
     if (n < 10) return CAP_INVALID;
     s.kind = SIG_RAW;
   } else if (hasACState(r.decode_type)) {
@@ -796,10 +783,8 @@ CaptureResult captureFrame(const decode_results &r, unsigned long nowMs) {
 
   if (!first) {
     IRSignal &p = capturedFrames[capturedFrameCount - 1];
-    // azonos keret (pl. Sony 3x ismétlés) eldobása
     if (p.kind == s.kind && p.protocol == s.protocol && p.bits == s.bits && p.value == s.value && memcmp(p.state, s.state, sizeof(s.state)) == 0)
       return CAP_IGNORED;
-    // keretszünet = dekódolások közti idő - ennek a keretnek a hossza
     long gap = (long)(nowMs - lastFrameMs) - (long)(durUs / 1000);
     p.gapAfterMs = (uint16_t)constrain(gap, 10L, 300L);
   }
@@ -832,15 +817,11 @@ void transmitSignal(const IRSignal &s) {
     irsend.sendRaw(s.rawData, s.rawDataLen, khz);
     usedRaw = true;
   }
-  Serial.printf("TX kind=%u proto=%s bits=%u raw=%u ok=%d fallback=%d dur=%lums\n", s.kind,
-                typeToString(s.protocol).c_str(), s.bits, s.rawDataLen, ok, !ok && usedRaw,
-                (unsigned long)((micros() - t0) / 1000));
 }
 
 void transmitSequence(const IRSignal *frames, uint8_t count) {
   for (uint8_t i = 0; i < count; i++) {
     transmitSignal(frames[i]);
-    // nyers küldésnél nincs záró szünet; state/value küldésnél a protokoll saját szünete benne van
     if (i + 1 < count && frames[i].kind == SIG_RAW)
       delay(frames[i].gapAfterMs ? frames[i].gapAfterMs : IR_DEFAULT_GAP_MS);
   }
@@ -853,7 +834,7 @@ uint8_t prontoCarrierKHz(const uint16_t *pronto) {
 uint16_t prontoToRawSignal(const uint16_t *pronto, uint16_t *outRaw) {
   const float unit = pronto[1] * PRONTO_CLOCK_US;
   uint16_t totalVals = (pronto[2] + pronto[3]) * 2;
-  totalVals = min(totalVals, (uint16_t)(IR_CODE_LEN - 4));  // 4 fejlécszó után jön az adat
+  totalVals = min(totalVals, (uint16_t)(IR_CODE_LEN - 4));
   for (uint16_t i = 0; i < totalVals; i++) outRaw[i] = (uint16_t)(pronto[4 + i] * unit);
   return totalVals;
 }
@@ -979,7 +960,7 @@ bool loadSignalFromSD(const String &fileName, IRSignal *frames, uint8_t &count) 
   if (!f) return false;
 
   memset(frames, 0, sizeof(IRSignal) * MAX_FRAMES);
-  uint8_t carrier = DEFAULT_CARRIER_KHZ, cur = 0, seen = 1;  // "frame:" nélküli (régi) fájl = 1 keret
+  uint8_t carrier = DEFAULT_CARRIER_KHZ, cur = 0, seen = 1;
   bool hasValue[MAX_FRAMES] = {}, hasRaw[MAX_FRAMES] = {};
   uint16_t stateLen[MAX_FRAMES] = {};
 
@@ -1128,7 +1109,7 @@ void formatStatusLine(const char *label, uint16_t labelColor, const String &name
 }
 
 // ============================================================
-// Screens — Main menu
+// Screens - Main menu
 // ============================================================
 void drawMenuUI() {
   tft.fillScreen(TFT_BLACK);
@@ -1141,7 +1122,7 @@ void drawMenuUI() {
 }
 
 // ============================================================
-// Screens — Signals (transmit / receive / keyboard)
+// Screens - Signals (transmit / receive / keyboard)
 // ============================================================
 void signalOptions() {
   beginScreen();
@@ -1358,7 +1339,7 @@ void leaveKeyboard() {
 }
 
 // ============================================================
-// Screens — Built-in signals
+// Screens - Built-in signals
 // ============================================================
 void builtInSignalsBrowser() {
   resetListSelection();
@@ -1393,7 +1374,7 @@ void listBuiltInSignals() {
 }
 
 // ============================================================
-// Screens — SD Card
+// Screens - SD Card
 // ============================================================
 void sdData() {
   createOptions(SD_CARD_OPTIONS, 4, 10, 47, 220, 45);
@@ -1454,7 +1435,7 @@ void loadSDFiles(const String &path) {
   sdFiles.clear();
   File dir = SD.open(path);
   if (!dir) {
-    Serial.println("Failed to open dir");
+    // Failed to open directory
     return;
   }
   for (File e = dir.openNextFile(); e && sdFiles.size() < SD_FILES_MAX; e = dir.openNextFile()) {
@@ -1568,7 +1549,7 @@ void deleteSelectedFile() {
 }
 
 // ============================================================
-// Screens — Theme
+// Screens - Theme
 // ============================================================
 void themeOptions() {
   createOptions(THEME_OPTIONS, 4, 10, 47, 220, 45);
