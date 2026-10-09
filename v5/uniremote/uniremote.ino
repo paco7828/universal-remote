@@ -164,6 +164,7 @@ struct ScrollList {
   int viewX = 0, viewY = 0, viewW = 0, viewH = 0;
   RowRenderer renderRow;
   std::function<void()> onOpen = nullptr;
+  std::function<void()> onSelect = nullptr;
 };
 
 struct Option {
@@ -265,6 +266,7 @@ void leaveKeyboard();
 void builtInSignalsBrowser();
 void listBuiltInSignals();
 void listBuiltInVariants();
+void updateBuiltInButtons(bool force);
 
 // Screens: SD card
 void sdData();
@@ -318,7 +320,8 @@ const Option THEME_OPTIONS[] = {
 
 const HardcodedBrand hardcodedBrands[] = {
   { "EPSON", EPSON_CODES, EPSON_CODES_LENGTH },
-  { "NEC", NEC_CODES, NEC_CODES_LENGTH }
+  { "NEC", NEC_CODES, NEC_CODES_LENGTH },
+  { "MIDEA", MIDEA_CODES, MIDEA_CODES_LENGTH }
 };
 const uint8_t hardcodedBrandsLength = sizeof(hardcodedBrands) / sizeof(hardcodedBrands[0]);
 
@@ -483,6 +486,7 @@ void pollTouch() {
         } else {
           lastTapIndex = tapped;
           lastTapTime = now;
+          if (activeScrollList->onSelect) activeScrollList->onSelect();
         }
       }
     }
@@ -534,6 +538,7 @@ void clearScreen() {
 void drawHeaderFooter() {
   activeScrollList = nullptr;
   activeList.onOpen = nullptr;
+  activeList.onSelect = nullptr;
   lastTapIndex = -1;
   tft.drawFastHLine(0, 6, 239, currentTheme.primary);
   for (int i = 0; i < 15; i++) {
@@ -1363,6 +1368,28 @@ void builtInSignalsBrowser() {
   drawTitle("Built-in signals", 70);
 }
 
+static bool builtInSendShown = false;
+
+void updateBuiltInButtons(bool force) {
+  bool wantSend = selectionValid(currentBrandCodesLength)
+                  && codeVariants(currentBrandCodes[activeList.selectedIndex]) == 1;
+  if (!force && wantSend == builtInSendShown) return;
+  builtInSendShown = wantSend;
+
+  buttonCount = 0;
+  tft.fillRect(0, LIST_BUTTON_Y - 3, 240, 36, TFT_BLACK);
+
+  if (wantSend) {
+    createTouchBox(15, LIST_BUTTON_Y, 100, 28, currentTheme.secondary, "Back", builtInSignalsBrowser, true);
+    createTouchBox(125, LIST_BUTTON_Y, 100, 28, currentTheme.primary, "Send", []() {
+      if (!selectionValid(currentBrandCodesLength)) return;
+      sendBuiltInVariant(currentBrandCodes[activeList.selectedIndex], 0);
+    });
+  } else {
+    createTouchBox(15, LIST_BUTTON_Y, 210, 28, currentTheme.secondary, "Back", builtInSignalsBrowser, true);
+  }
+}
+
 void listBuiltInSignals() {
   resetListSelection();
   beginScreen();
@@ -1372,10 +1399,15 @@ void listBuiltInSignals() {
   });
   activeList.onOpen = []() {
     if (!selectionValid(currentBrandCodesLength)) return;
-    currentCode = &currentBrandCodes[activeList.selectedIndex];
+    const IRCode &c = currentBrandCodes[activeList.selectedIndex];
+    if (codeVariants(c) <= 1) return;
+    currentCode = &c;
     listBuiltInVariants();
   };
-  createTouchBox(15, LIST_BUTTON_Y, 210, 28, currentTheme.secondary, "Back", builtInSignalsBrowser, true);
+  activeList.onSelect = []() {
+    updateBuiltInButtons(false);
+  };
+  updateBuiltInButtons(true);
   drawTitle((currentBrandName + " signals").c_str(), 70);
 }
 
