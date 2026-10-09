@@ -229,7 +229,8 @@ void transmitSignal(const IRSignal &signal);
 void transmitSequence(const IRSignal *frames, uint8_t count);
 uint8_t prontoCarrierKHz(const uint16_t *pronto);
 uint16_t prontoToRawSignal(const uint16_t *pronto, uint16_t *outRaw);
-void sendBuiltInCode(const IRCode &code);
+uint8_t codeVariants(const IRCode &code);
+void sendBuiltInVariant(const IRCode &code, uint8_t variant);
 
 // Signal storage (SD)
 void sortNames(std::vector<String> &v);
@@ -263,6 +264,7 @@ void leaveKeyboard();
 // Screens: built-in signals
 void builtInSignalsBrowser();
 void listBuiltInSignals();
+void listBuiltInVariants();
 
 // Screens: SD card
 void sdData();
@@ -373,6 +375,7 @@ String sendCachePath;
 const IRCode *currentBrandCodes = nullptr;
 uint8_t currentBrandCodesLength = 0;
 String currentBrandName = "";
+const IRCode *currentCode = nullptr;
 
 // --- SD file browser ---
 std::vector<String> sdFiles;
@@ -839,16 +842,17 @@ uint16_t prontoToRawSignal(const uint16_t *pronto, uint16_t *outRaw) {
   return totalVals;
 }
 
-void sendBuiltInCode(const IRCode &code) {
+uint8_t codeVariants(const IRCode &code) {
+  return code.variantCount < MAX_IR_VARIANTS ? code.variantCount : MAX_IR_VARIANTS;
+}
+
+void sendBuiltInVariant(const IRCode &code, uint8_t v) {
+  if (v >= codeVariants(code)) return;
   IRSignal signal{};
   signal.kind = SIG_RAW;
-
-  for (uint8_t v = 0; v < code.variantCount && v < MAX_IR_VARIANTS; v++) {
-    signal.rawDataLen = prontoToRawSignal(code.codeArray[v], signal.rawData);
-    signal.carrierKHz = prontoCarrierKHz(code.codeArray[v]);
-    transmitSignal(signal);
-    if (v + 1 < code.variantCount) delay(IR_VARIANT_GAP_MS);
-  }
+  signal.rawDataLen = prontoToRawSignal(code.codeArray[v], signal.rawData);
+  signal.carrierKHz = prontoCarrierKHz(code.codeArray[v]);
+  transmitSignal(signal);
 }
 
 // ============================================================
@@ -1363,14 +1367,31 @@ void listBuiltInSignals() {
   resetListSelection();
   beginScreen();
   setupAndRenderScrollList(currentBrandCodesLength, 32, [](int idx, int y, int rowH, bool sel) {
-    drawListRow(y, rowH, sel, currentBrandCodes[idx].codeName);
+    const IRCode &c = currentBrandCodes[idx];
+    drawListRow(y, rowH, sel, String(c.codeName) + " (" + String(codeVariants(c)) + ")");
   });
-  createTouchBox(15, LIST_BUTTON_Y, 100, 28, currentTheme.secondary, "Back", builtInSignalsBrowser, true);
-  createTouchBox(125, LIST_BUTTON_Y, 100, 28, currentTheme.primary, "Send", []() {
+  activeList.onOpen = []() {
     if (!selectionValid(currentBrandCodesLength)) return;
-    sendBuiltInCode(currentBrandCodes[activeList.selectedIndex]);
-  });
+    currentCode = &currentBrandCodes[activeList.selectedIndex];
+    listBuiltInVariants();
+  };
+  createTouchBox(15, LIST_BUTTON_Y, 210, 28, currentTheme.secondary, "Back", builtInSignalsBrowser, true);
   drawTitle((currentBrandName + " signals").c_str(), 70);
+}
+
+void listBuiltInVariants() {
+  if (!currentCode) return;
+  resetListSelection();
+  beginScreen();
+  setupAndRenderScrollList(codeVariants(*currentCode), 32, [](int idx, int y, int rowH, bool sel) {
+    drawListRow(y, rowH, sel, "Signal " + String(idx + 1));
+  });
+  createTouchBox(15, LIST_BUTTON_Y, 100, 28, currentTheme.secondary, "Back", listBuiltInSignals, true);
+  createTouchBox(125, LIST_BUTTON_Y, 100, 28, currentTheme.primary, "Send", []() {
+    if (!currentCode || !selectionValid(codeVariants(*currentCode))) return;
+    sendBuiltInVariant(*currentCode, (uint8_t)activeList.selectedIndex);
+  });
+  drawTitle((currentBrandName + " > " + currentCode->codeName).c_str(), 60);
 }
 
 // ============================================================
